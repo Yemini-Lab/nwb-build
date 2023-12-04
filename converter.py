@@ -8,7 +8,7 @@ import pandas as pd
 lab = 'Flavell Laboratory'
 institution = 'MIT'
 related_publications = 'https://doi.org/10.1016/j.cell.2023.07.035'
-metadata_file = pd.read_csv('')
+metadata_file = pd.read_csv('flavell_data.xlsx')
 
 def conv_file(file_name, file_path, file_extension):
     file_info = {}
