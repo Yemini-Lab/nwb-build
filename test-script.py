@@ -48,9 +48,6 @@ def visualize_frames_with_slider(file_path, dataset_name):
 def extract_metadata(nd2_file_path):
     """
     Extracts metadata from a .nd2 file.
-
-    :param nd2_file_path: Path to the .nd2 file
-    :return: Dictionary containing metadata
     """
     with nd2reader.ND2Reader(nd2_file_path) as images:
         metadata = images.metadata
@@ -69,7 +66,7 @@ def print_metadata(obj, prefix=''):
             print_metadata(obj[key], prefix + '  ')
 
 # Example usage of the function
-nd2_file_path = 'C:\\Users\\Kevin\\Documents\\data\\2022-06-14-03.nd2'  # Replace with the path to your .nd2 file
+nd2_file_path = 'C:\\Users\\Kevin\\Documents\\data\\2022-06-14-03.nd2'
 print(nd2reader.ND2Reader(nd2_file_path))
 print(nd2reader.ND2Reader(nd2_file_path).metadata['num_frames'])
 with nd2reader.ND2Reader(nd2_file_path) as images:
@@ -77,14 +74,10 @@ with nd2reader.ND2Reader(nd2_file_path) as images:
     for channel in range(num_channels):
         # Accessing each channel
         channel_image = images.get_frame_2D(c=channel, t=500)
-
-        # Display or process the channel image here
-        # For demonstration, let's just show the image using matplotlib
         plt.imshow(channel_image, cmap='gray')
         plt.title(f'Channel {channel}')
         plt.show()
 
-# Replace 'your_large_file.h5' with the path to your large HDF5 file
 file_path = 'C:\\Users\\Kevin\\Documents\\data\\2022-06-14-01.h5'
 with h5py.File(file_path, 'r') as hdf:
     dataset = 'img_nir'
