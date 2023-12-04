@@ -8,7 +8,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict
-
 import cv2
 import h5py
 import numpy as np
@@ -707,7 +706,7 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
         reference_frame=f"Worm {location}"
     )
 
-    Image = build_colormap(full_path, ImagingVol, metadata, OpticalChannelRefs)
+    Image = build_colormap(datapath, ImagingVol, metadata, OpticalChannelRefs)
     nwbfile.add_imaging_plane(ImagingVol)
 
     processed_module = nwbfile.create_processing_module(
@@ -716,12 +715,12 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwbfile, full_path, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
+    calc_imaging_volume = build_gcamp(nwbfile, datapath, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
                                       location, extract_pixel_sizes(metadata['comments']), 'um')
 
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
-        full_path, ImagingVol, calc_imaging_volume)
-    build_activity(full_path, metadata, video_center_table)
+        datapath, ImagingVol, calc_imaging_volume)
+    build_activity(datapath, metadata, video_center_table)
     #build_mip(nwbfile, ImagingVol, full_path)
 
     processed_module.add(Image)
@@ -732,7 +731,7 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
     #    processed_module.add(behavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = full_path + ".nwb"
+    save_path = datapath + ".nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwbfile)
     io.close()
