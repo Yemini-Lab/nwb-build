@@ -65,28 +65,83 @@ def print_metadata(obj, prefix=''):
         for key in obj:
             print_metadata(obj[key], prefix + '  ')
 
-# Example usage of the function
-nd2_file_path = 'C:\\Users\\Kevin\\Documents\\data\\2022-06-14-03.nd2'
-print(nd2reader.ND2Reader(nd2_file_path))
-print(nd2reader.ND2Reader(nd2_file_path).metadata['num_frames'])
-with nd2reader.ND2Reader(nd2_file_path) as images:
-    num_channels = images.sizes['c']
-    for channel in range(num_channels):
-        # Accessing each channel
-        channel_image = images.get_frame_2D(c=channel, t=500)
-        plt.imshow(channel_image, cmap='gray')
-        plt.title(f'Channel {channel}')
-        plt.show()
+def nd2_test(nd2_file_path):
+    print(nd2reader.ND2Reader(nd2_file_path))
+    print(nd2reader.ND2Reader(nd2_file_path).metadata['num_frames'])
+    with nd2reader.ND2Reader(nd2_file_path) as images:
+        x_size = images.sizes['x']
+        y_size = images.sizes['y']
+        z_size = nd2reader.ND2Reader(nd2_file_path).metadata['z_coordinates'][0]
+        num_channels = images.sizes['c']
+        for channel in range(num_channels):
+            # Accessing each channel
+            channel_image = images.get_frame_2D(c=channel, t=500)
+            plt.imshow(channel_image, cmap='gray')
+            plt.title(f'Channel {channel}')
+            plt.show()
 
-file_path = 'C:\\Users\\Kevin\\Documents\\data\\2022-06-14-01.h5'
-with h5py.File(file_path, 'r') as hdf:
-    dataset = 'img_nir'
-    if dataset in hdf:
-        data = hdf[dataset]
-        print(data)
-        print(data.shape)
-    else:
-        print(f"Dataset {dataset} not found in the file.")
+def h5_test(file_path):
+    with h5py.File(file_path, 'r') as hdf:
+        for dataset in hdf:
+            print(dataset)
+        dataset = 'pos_feature'
+        if dataset in hdf:
+            data = hdf[dataset][:]
+            print(data)
+            print(data.shape)
+        else:
+            print(f"Dataset {dataset} not found in the file.")
 
-# Visualize frames with a slider
-visualize_frames_with_slider(file_path, 'img_nir')
+    # Visualize frames with a slider
+    visualize_frames_with_slider(file_path, 'img_nir')
+
+def extract_second_channel(nd2_path, frame_index):
+    """
+    Extract the second channel from a specified frame in an .nd2 file.
+    """
+    with nd2reader.ND2Reader(nd2_path) as images:
+        return images.get_frame_2D(c=1, t=frame_index)
+
+def create_rgb_image(paths, frame_index):
+    """
+    Create an RGB image from the second channels of a specified frame from three .nd2 files.
+    """
+    channels = [extract_second_channel(path, frame_index) for path in paths]
+    rgb_image = np.stack(channels, axis=-1)
+    rgb_image = (255 * (rgb_image / rgb_image.max())).astype(np.uint8)
+    return rgb_image
+
+def update(val):
+    """
+    Update the image based on the slider's position.
+    """
+    frame_index = int(slider.val)
+    rgb_image = create_rgb_image(nd2_paths, frame_index)
+    ax.imshow(rgb_image)
+    fig.canvas.draw_idle()
+
+nd2_paths = ['C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-03.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-04.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-05.nd2']
+
+# Determine the number of frames in the smallest file
+min_frames = min(nd2reader.ND2Reader(f).sizes['t'] for f in nd2_paths)
+
+# Create the initial RGB image
+frame_index = 0
+rgb_image = create_rgb_image(nd2_paths, frame_index)
+
+# Create the plot
+fig, ax = plt.subplots()
+plt.subplots_adjust(left=0.1, bottom=0.25)
+ax.imshow(rgb_image)
+
+# Create the slider
+ax_slider = plt.axes([0.1, 0.1, 0.8, 0.03])
+slider = Slider(ax_slider, 'Frame', 0, min_frames-1, valinit=frame_index, valfmt='%0.0f')
+
+# Update the image when the slider value changes
+slider.on_changed(update)
+
+plt.show()
+
+#file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.nd2'
+#nd2_test(file_path)
