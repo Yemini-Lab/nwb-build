@@ -26,6 +26,7 @@ from pynwb.ophys import ImageSegmentation, PlaneSegmentation, \
 from tifffile import TiffFile
 from tifffile import imread
 from tqdm import tqdm
+import nd2reader
 
 def iterate_folders():
     cwd = os.getcwd()
@@ -156,8 +157,6 @@ def parse_ini(full_path, metadata):
     return metadata
 
 
-# Discover and sort tiff files
-# Read .nd2 file and extract frames
 def discover_nd2_files(file_path):
     nd2_file = nd2reader.ND2Reader(file_path)
     frames = len(nd2_file)
