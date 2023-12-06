@@ -33,7 +33,7 @@ def conv_file(file_name, file_path, file_extension):
     nwb_file, main_device = simpleio.build_file(file_info['metadata'])
 
     for eachRun in range(len(file_info['metadata'].keys())):
-        simpleio.build_nwb(nwb_file, file_info['path'], file_info['name'], file_info['metadata'][eachRun], main_device)
+        simpleio.build_nwb(nwb_file, file_info, eachRun, main_device)
         file_info['x'] = nd2reader.ND2Reader(file_info['path']).metadata['width']
         file_info['y'] = nd2reader.ND2Reader(file_info['path']).metadata['height']
         file_info['num_frames'] = nd2reader.ND2Reader(file_info['path']).metadata['num_frames']

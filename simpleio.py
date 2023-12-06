@@ -28,6 +28,7 @@ from tifffile import imread
 from tqdm import tqdm
 import nd2reader
 
+
 def iterate_folders():
     cwd = os.getcwd()
     existing_nwb_files = {f[:-4] for f in os.listdir(cwd) if f.endswith('.nwb')}
@@ -203,7 +204,7 @@ def build_nir(nwbfile, ImagingVol, video_path):
         data = hdf['img_nir'][:]
 
     nir_data = np.array(data)
-    nir_data = np.transpose(data, axes=(0, 2, 1)) # Shape should be (T, X, Y)
+    nir_data = np.transpose(data, axes=(0, 2, 1))  # Shape should be (T, X, Y)
     nir_data = nir_data[:, np.newaxis, :, :, np.newaxis]  # Reshape to (T, X, Y, 1, 1) to fit (T, X, Y, Z, C)
     hefty_data = H5DataIO(data=nir_data, compression=True)
 
@@ -238,7 +239,6 @@ def build_nir(nwbfile, ImagingVol, video_path):
 
 
 def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, metadata):
-
     nd2_file, frames, channels = discover_nd2_files(os.path.join(full_path))
     h5_memory_mapper(nd2_file, os.path.join(full_path, 'FullRes', 'video-array.h5'))
     scan_rate = metadata['scan_rate']
@@ -317,7 +317,6 @@ def build_devices(nwbfile, metadata, count):
 
 
 def build_file(file_data):
-
     # Create NWBFile object
     nwbfile = NWBFile(
         session_description=file_data['description'],
@@ -428,27 +427,54 @@ def build_channels(metadata):
     return OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs
 
 
-def build_colormap(full_path, ImagingVol, metadata, OpticalChannelRefs):
-    # Load the colormap.tif file into a numpy array
-    raw_file = f"{full_path}/colormap.tif"  # Replace with the actual path to your colormap.tif
-    data = skio.imread(raw_file)
+def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRefs):
+    print("Building NeuroPAL volume...")
 
-    # Transpose the data to the order X, Y, Z, C
-    data = np.transpose(data, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
+    npal_channels = {
+        'OFP_run': 0,
+        'mNeptune_run': 0,
+        'TagRFP_run': 0
+    }
 
-    # Define RGBW channels
-    RGBW_channels = [0, 1, 3, 4]
+    for eachRun in metadata.keys():
+        if "OFP vs. GCaMP" in metadata[eachRun]['fluorophore']:
+            npal_channels['OFP_run']= eachRun
+            print(f"Found OFP run (Run {eachRun}).")
+        elif "mNeptune vs. GCaMP" in metadata[eachRun]['fluorophore']:
+            npal_channels['mNeptune_run']= eachRun
+            print(f"Found mNeptune run (Run {eachRun}).")
+        elif "BFP vs. TagRFP, mNeptune" in metadata[eachRun]['fluorophore']:
+            npal_channels['TagRFP_run']= eachRun
+            print(f"Found TagRFP run (Run {eachRun}).")
 
-    # Create MultiChannelVolume object
-    Image = MultiChannelVolume(
-        name='NeuroPALImageRaw',
-        order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
-        description=f"Colormap of {metadata['identifier']}.",
-        RGBW_channels=RGBW_channels,
-        data=H5DataIO(data=data, compression=True),
-        imaging_volume=ImagingVol  # Assuming this is defined earlier
-    )
-    return Image
+    npal_paths = [f"{full_path}/{file_name[:-1]}/{eachRun}" for eachRun in npal_channels.values()]
+
+    if 0 not in npal_channels.values():
+        # Load the colormap.tif file into a numpy array
+        raw_file = f"{full_path}/colormap.tif"  # Replace with the actual path to your colormap.tif
+        data = skio.imread(raw_file)
+
+        # Transpose the data to the order X, Y, Z, C
+        data = np.transpose(data, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
+
+        # Define RGBW channels
+        RGBW_channels = [0, 1, 3, 4]
+
+        # Create MultiChannelVolume object
+        Image = MultiChannelVolume(
+            name='NeuroPALImageRaw',
+            order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
+            description=f"Colormap of {metadata['identifier']}.",
+            RGBW_channels=RGBW_channels,
+            data=H5DataIO(data=data, compression=True),
+            imaging_volume=ImagingVol  # Assuming this is defined earlier
+        )
+        print("Successfully built NeuroPAL volume.")
+        return Image
+    else:
+        for eachRun in npal_channels.keys():
+            if npal_channels[eachRun] == 0:
+                print(f"ERROR: Could not find {eachRun} channel! No NeuroPAL volume constructed.")
 
 
 def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
@@ -604,8 +630,15 @@ def build_behavior(full_path, metadata):
     return behavior
 
 
-def build_nwb(nwbfile, data_path, file_name, metadata, main_device):
-    #behavior = build_behavior(full_path, metadata)
+def build_nwb(nwb_file, file_info, run, main_device):
+    data_path = file_info['path']
+    file_name = file_info['name']
+    metadata = file_info['metadata'][run]
+
+    nd2_path = f"{data_path}/{file_name}.nd2"
+    h5_path = f"{data_path}/{file_name}.h5"
+
+    # behavior = build_behavior(full_path, metadata)
     OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs = build_channels(metadata)
 
     # Create ImagingVolume object
@@ -623,34 +656,34 @@ def build_nwb(nwbfile, data_path, file_name, metadata, main_device):
         reference_frame=f"Worm {metadata['location']}"
     )
 
-    Image = build_colormap(data_path, ImagingVol, metadata, OpticalChannelRefs)
-    nwbfile.add_imaging_plane(ImagingVol)
+    Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
+    nwb_file.add_imaging_plane(ImagingVol)
 
-    processed_module = nwbfile.create_processing_module(
+    processed_module = nwb_file.create_processing_module(
         name='Processed',
         description='Processed image data and metadata.'
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwbfile, f"{data_path}.nd2", gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
+    calc_imaging_volume = build_gcamp(nwb_file, nd2_path, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
                                       metadata)
 
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
         data_path, ImagingVol, calc_imaging_volume)
     build_activity(data_path, metadata, video_center_table)
-    build_nir(nwbfile, ImagingVol, f"{data_path}.h5")
+    build_nir(nwb_file, ImagingVol, h5_path)
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)
     processed_module.add(OpticalChannelRefs)
     processed_module.add(gcamp_OpticalChannelRefs)
-    #if behavior is not None:
+    # if behavior is not None:
     #    processed_module.add(behavior)
 
     # specify the file path you want to save this NWB file to
     save_path = data_path + ".nwb"
     io = NWBHDF5IO(save_path, mode='w')
-    io.write(nwbfile)
+    io.write(nwb_file)
     io.close()
 
 
