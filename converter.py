@@ -7,6 +7,9 @@ import pandas as pd
 
 lab = 'Flavell Laboratory'
 institution = 'MIT'
+grid_spacing = ''
+cultivation_temperature = '22C'
+volume_rate = '1.7 Hz'
 related_publications = 'https://doi.org/10.1016/j.cell.2023.07.035'
 metadata_file = pd.read_csv('flavell_data.xlsx')
 

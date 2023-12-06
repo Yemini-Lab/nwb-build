@@ -197,39 +197,44 @@ def iter_calc_h5(filename, numZ):
             yield np.squeeze(tpoint)
 
 
-# DETECT & BUILD MIP GROUP
-def build_mip(nwbfile, ImagingVol, full_path):
-    video_path = f"{full_path}/MIP.mp4"
-    cap = cv2.VideoCapture(video_path)
-    frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))  # Convert to grayscale; modify as needed
-    cap.release()
+# Build bright field NIR
+def build_nir(nwbfile, ImagingVol, video_path):
+    with h5py.File(video_path, 'r') as hdf:
+        data = hdf['img_nir'][:]
 
-    mip_data = np.array(frames)  # Shape should be (T, X, Y)
-    mip_data = mip_data[:, np.newaxis, :, :, np.newaxis]  # Reshape to (T, X, Y, 1, 1) to fit (T, X, Y, Z, C)
-    hefty_data = H5DataIO(data=mip_data, compression=True)
+    nir_data = np.array(data)
+    nir_data = np.transpose(data, axes=(0, 2, 1)) # Shape should be (T, X, Y)
+    nir_data = nir_data[:, np.newaxis, :, :, np.newaxis]  # Reshape to (T, X, Y, 1, 1) to fit (T, X, Y, Z, C)
+    hefty_data = H5DataIO(data=nir_data, compression=True)
 
-    mip_vol_series = MultiChannelVolumeSeries(
-        name='MaximumIntensityProjection',
-        description='Maximum Intensity Projection video.',
+    nir_vol_series = MultiChannelVolumeSeries(
+        name='BrightFieldNIR',
+        description='The light path used to image behavior was in a reflected brightfield (NIR) configuration. Light '
+                    'supplied by an 850-nm LED (M850L3, Thorlabs) was collimated and passed through an 850/10 '
+                    'bandpass filter (FBH850-10, Thorlabs). Illumination light was reflected towards the sample by a '
+                    'half mirror and was focused on the sample through a 10x objective (CFI Plan Fluor 10x, '
+                    'Nikon). The image from the sample passed through the half mirror and was filtered by another '
+                    '850-nm bandpass filter of the same model. The image was captured by a CMOS camera ('
+                    'BFS-U3-28S5M-C, FLIR).',
         data=hefty_data,
         unit='',
         timestamps=list(range(hefty_data.shape[0])),
-        imaging_volume=ImagingVol  # Assuming this is defined earlier
+        imaging_volume=ImagingVol
     )
 
-    # we create a processing module for the pre-processed neuroPAL image
-    mip_module = nwbfile.create_processing_module(
-        name='MaxIntensityProj',
-        description='Maximum Intensity Projection'
+    nir_module = nwbfile.create_processing_module(
+        name='BF_NIR',
+        description='The light path used to image behavior was in a reflected brightfield (NIR) configuration. Light '
+                    'supplied by an 850-nm LED (M850L3, Thorlabs) was collimated and passed through an 850/10 '
+                    'bandpass filter (FBH850-10, Thorlabs). Illumination light was reflected towards the sample by a '
+                    'half mirror and was focused on the sample through a 10x objective (CFI Plan Fluor 10x, '
+                    'Nikon). The image from the sample passed through the half mirror and was filtered by another '
+                    '850-nm bandpass filter of the same model. The image was captured by a CMOS camera ('
+                    'BFS-U3-28S5M-C, FLIR).'
     )
-    mip_module.add(mip_vol_series)
+    nir_module.add(nir_vol_series)
 
-    return mip_vol_series
+    return nir_vol_series
 
 
 def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, metadata):
@@ -634,7 +639,7 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
         datapath, ImagingVol, calc_imaging_volume)
     build_activity(datapath, metadata, video_center_table)
-    #build_mip(nwbfile, ImagingVol, full_path)
+    build_nir(nwbfile, ImagingVol, datapath)
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)

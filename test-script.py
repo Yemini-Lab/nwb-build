@@ -84,10 +84,9 @@ def h5_test(file_path):
     with h5py.File(file_path, 'r') as hdf:
         for dataset in hdf:
             print(dataset)
-        dataset = 'pos_feature'
+        dataset = 'img_nir'
         if dataset in hdf:
             data = hdf[dataset][:]
-            print(data)
             print(data.shape)
         else:
             print(f"Dataset {dataset} not found in the file.")
@@ -122,6 +121,7 @@ def update(val):
 
 nd2_paths = ['C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-03.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-04.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-05.nd2']
 
+"""
 # Determine the number of frames in the smallest file
 min_frames = min(nd2reader.ND2Reader(f).sizes['t'] for f in nd2_paths)
 
@@ -142,6 +142,7 @@ slider = Slider(ax_slider, 'Frame', 0, min_frames-1, valinit=frame_index, valfmt
 slider.on_changed(update)
 
 plt.show()
+"""
 
-#file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.nd2'
-#nd2_test(file_path)
+file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.h5'
+h5_test(file_path)
