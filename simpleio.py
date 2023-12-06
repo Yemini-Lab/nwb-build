@@ -604,10 +604,9 @@ def build_behavior(full_path, metadata):
     return behavior
 
 
-def build_nwb(nwbfile, datapath, metadata, main_device):
+def build_nwb(nwbfile, data_path, file_name, metadata, main_device):
     #behavior = build_behavior(full_path, metadata)
     OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs = build_channels(metadata)
-    location = metadata['location']
 
     # Create ImagingVolume object
     ImagingVol = ImagingVolume(
@@ -616,15 +615,15 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
         order_optical_channels=OpticalChannelRefs,
         description='NeuroPAL image of C. elegans',
         device=main_device,
-        location=location,
-        grid_spacing=extract_pixel_sizes(metadata['comments']),
-        grid_spacing_unit='micrometers',
+        location=metadata['location'],
+        grid_spacing=metadata['grid spacing'],
+        grid_spacing_unit=metadata['grid spacing unit'],
         origin_coords=[0, 0, 0],
-        origin_coords_unit='micrometers',
-        reference_frame=f"Worm {location}"
+        origin_coords_unit=metadata['grid spacing unit'],
+        reference_frame=f"Worm {metadata['location']}"
     )
 
-    Image = build_colormap(datapath, ImagingVol, metadata, OpticalChannelRefs)
+    Image = build_colormap(data_path, ImagingVol, metadata, OpticalChannelRefs)
     nwbfile.add_imaging_plane(ImagingVol)
 
     processed_module = nwbfile.create_processing_module(
@@ -633,13 +632,13 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwbfile, datapath, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
+    calc_imaging_volume = build_gcamp(nwbfile, f"{data_path}.nd2", gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
                                       metadata)
 
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
-        datapath, ImagingVol, calc_imaging_volume)
-    build_activity(datapath, metadata, video_center_table)
-    build_nir(nwbfile, ImagingVol, datapath)
+        data_path, ImagingVol, calc_imaging_volume)
+    build_activity(data_path, metadata, video_center_table)
+    build_nir(nwbfile, ImagingVol, f"{data_path}.h5")
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)
@@ -649,7 +648,7 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
     #    processed_module.add(behavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = datapath + ".nwb"
+    save_path = data_path + ".nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwbfile)
     io.close()

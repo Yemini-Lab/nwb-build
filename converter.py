@@ -18,7 +18,7 @@ def conv_file(file_name, file_path, file_extension):
     file_info['lab'] = lab
     file_info['institution'] = institution
     file_info['related_publications'] = related_publications
-    file_info['path'] = f"{file_name}{file_extension}"
+    file_info['path'] = file_path
     
     # Extract date and subject number from the file name
     match = re.match(r"(\d{4}-\d{2}-\d{2})-(\d+)", file_name)
@@ -33,28 +33,11 @@ def conv_file(file_name, file_path, file_extension):
     nwb_file, main_device = simpleio.build_file(file_info['metadata'])
 
     for eachRun in range(len(file_info['metadata'].keys())):
-        simpleio.build_nwb(nwb_file, file_info['path'], file_info['metadata'][eachRun], main_device)
-
-        if file_extension == '.h5':
-            with h5py.File(file_path, 'r') as hdf:
-                dataset = 'img_metadata'
-                if dataset in hdf:
-                    data = hdf[dataset]['img_timestamp'][:]
-                    print(len(data))
-                    print(data)
-                else:
-                    print(f"Dataset {dataset} not found in the file.")
-                file_info['x'] = hdf[dataset]['img_nir'].shape[1]
-                file_info['y'] = hdf[dataset]['img_nir'].shape[2]
-                file_info['num_frames'] = len(hdf[dataset]['img_timestamp'][:])
-                file_info['c'] = len(nd2reader.ND2Reader(file_info['path']).metadata['channels'])
-        elif file_extension == '.nd2':
-            file_info['x'] = nd2reader.ND2Reader(file_info['path']).metadata['width']
-            file_info['y'] = nd2reader.ND2Reader(file_info['path']).metadata['height']
-            file_info['num_frames'] = nd2reader.ND2Reader(file_info['path']).metadata['num_frames']
-            file_info['c'] = len(nd2reader.ND2Reader(file_info['path']).metadata['channels'])
-        else:
-            print('else')
+        simpleio.build_nwb(nwb_file, file_info['path'], file_info['name'], file_info['metadata'][eachRun], main_device)
+        file_info['x'] = nd2reader.ND2Reader(file_info['path']).metadata['width']
+        file_info['y'] = nd2reader.ND2Reader(file_info['path']).metadata['height']
+        file_info['num_frames'] = nd2reader.ND2Reader(file_info['path']).metadata['num_frames']
+        file_info['c'] = len(nd2reader.ND2Reader(file_info['path']).metadata['channels'])
 
 
 def extract_subject_data(df, subject_name):
@@ -82,7 +65,7 @@ def process_directory(directory):
             file_name, file_extension = os.path.splitext(entry)
 
             # Check for specific file extensions
-            if file_extension in ['.h5', '.nd2']:
+            if file_extension == '.nd2':
                 conv_file(file_name, directory, file_extension)
 
 
