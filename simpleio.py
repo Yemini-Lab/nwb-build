@@ -157,87 +157,30 @@ def parse_ini(full_path, metadata):
 
 
 # Discover and sort tiff files
-def discover_tiff_files(folder):
-    # Initialize an empty list to store file paths
-    tiff_files = []
-
-    # Regular expression to match the naming scheme and extract metadata
-    pattern = re.compile(r'worm(\d+)_run(\d+)_t(\d+)_(\w)\.tiff')
-
-    # Iterate through all files in the folder
-    for filename in os.listdir(folder):
-        if filename.endswith('.tiff'):
-            match = pattern.match(filename)
-            if match:
-                # Extract metadata from filename
-                worm_num, run_num, frame_num, channel = match.groups()
-
-                # Append a tuple containing the full path and metadata to the list
-                full_path = os.path.join(folder, filename)
-                tiff_files.append((full_path, int(worm_num), int(run_num), int(frame_num), channel))
-
-    # Sort the list based on the metadata (worm_num, run_num, frame_num, channel)
-    tiff_files.sort(key=lambda x: (x[1], x[2], x[3], x[4]))
-
-    # Return only the sorted file paths
-    sorted_tiff_files = [x[0] for x in tiff_files]
-    print(f"-FRAME COUNT: {len(sorted_tiff_files)}")
-
-    return sorted_tiff_files
+# Read .nd2 file and extract frames
+def discover_nd2_files(file_path):
+    nd2_file = nd2reader.ND2Reader(file_path)
+    frames = len(nd2_file)
+    channels = nd2_file.metadata['channels']
+    print(f"-FRAME COUNT: {frames}")
+    print(f"-CHANNEL COUNT: {len(channels)}")
+    return nd2_file, frames, channels
 
 
-def h5_memory_mapper(folder_path):
-    # Initialize variables
-    output_file = f"{folder_path}\\video-array.h5"
-    frame_pattern = re.compile(r"worm\d+_run\d+_t(\d+)_([RG])\.tiff")
-    batch_size = 4
-    max_workers = 1  # Number of threads
-
-    # Check if .h5 file already exists
+def h5_memory_mapper(nd2_file, output_file):
     if os.path.exists(output_file):
         print(f"-HDF5 FILE ALREADY EXISTS, SKIPPING BUILD.")
         return
 
-    def process_file(tiff_file, h5_file, folder_path):
-        match = frame_pattern.match(tiff_file)
-        if match:
-            frame_num = int(match.group(1))
-            channel = 0 if match.group(2) == 'R' else 1
-            tiff_data = imread(os.path.join(folder_path, tiff_file))
-            h5_file['dataset'][frame_num, :, :, :, channel] = np.transpose(tiff_data, (2, 1, 0))
-
-    # Get list of tiff files
-    tiff_files = [f for f in os.listdir(folder_path) if f.endswith('.tiff')]
-    print(f"Found {len(tiff_files)} tiff files.")
-
-    # Find dimensions
-    max_frame = -1
-    sample_tiff = imread(os.path.join(folder_path, tiff_files[0]))
-    z, y, x = sample_tiff.shape
-    print(f"Sample tiff dimensions: {x} x {y} x {z}")
-
-    for tiff_file in tiff_files:
-        match = frame_pattern.match(tiff_file)
-        if match:
-            frame_num = int(match.group(1))
-            max_frame = max(max_frame, frame_num)
-
-    print(f"Max frame number: {max_frame}")
-
-    # Create a memory-mapped .h5 file
-    shape = (max_frame + 1, x, y, z, 2)
-    print(f"Creating HDF5 file with shape {shape}")
+    shape = nd2_file.sizes
     h5_file = h5py.File(output_file, 'w')
     h5_file.create_dataset('dataset', shape, dtype='uint16')
 
     try:
-        # Populate the .h5 file in batches
         print("Populating the .h5 file...")
-        for i in tqdm(range(0, len(tiff_files), batch_size)):
-            batch_files = tiff_files[i:i + batch_size]
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                executor.map(process_file, batch_files, [h5_file] * len(batch_files), [folder_path] * len(batch_files))
-            gc.collect()
+        for i in tqdm(range(shape[0]), desc="Processing frames"):
+            frame_data = nd2_file.get_frame_2D(c=i)
+            h5_file['dataset'][i, :, :, :, :] = frame_data
     finally:
         print("Flushing changes and closing the file.")
         h5_file.close()
@@ -253,12 +196,6 @@ def iter_calc_h5(filename, numZ):
                 tpoint[:, :, j, :] = h5_file['dataset'][i, :, :, j, :]
 
             yield np.squeeze(tpoint)
-
-
-# Sort files based on timepoints
-def sort_files(folder_path):
-    files = os.listdir(folder_path)
-    return sorted(files, key=lambda x: int(x.split('_t')[1].split('_')[0]))
 
 
 # DETECT & BUILD MIP GROUP
@@ -296,45 +233,23 @@ def build_mip(nwbfile, ImagingVol, full_path):
     return mip_vol_series
 
 
-def extract_mat_meta(full_path):
-    # Load MATLAB info
-    mat_file = next(f for f in os.listdir(full_path) if f.endswith('_info.mat'))
-    mat_data = scipy.io.loadmat(os.path.join(full_path, mat_file))
-    info = mat_data['info'][0, 0]
+def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, metadata):
 
-    def convert_mat_to_python(mat_array: Any) -> Any:
-        """Convert MATLAB arrays to Python-native types."""
-        if np.isscalar(mat_array):
-            return mat_array.item()
-        elif mat_array.size == 1:
-            return mat_array.item().decode('utf-8') if isinstance(mat_array.item(), bytes) else mat_array.item()
-        else:
-            return mat_array.tolist()
+    nd2_file, frames, channels = discover_nd2_files(os.path.join(full_path))
+    h5_memory_mapper(nd2_file, os.path.join(full_path, 'FullRes', 'video-array.h5'))
+    scan_rate = metadata['scan_rate']
+    ai_sampling_rate = metadata['ai_sampling_rate']
 
-    scan_rate = info['daq']['scanRate'][0][0][0][0]
-    ai_sampling_rate = float(info['daq']['aiSampleRate'][0][0][0][0])
+    numZ = nd2_file.sizes['z']
+    numX = nd2_file.sizes['x']
+    numY = nd2_file.sizes['y']
 
-    return scan_rate, ai_sampling_rate
-
-
-def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, location, pixel_sizes, unit):
-    sorted_tiff_files = discover_tiff_files(os.path.join(full_path, 'FullRes'))
-    h5_memory_mapper(os.path.join(full_path, 'FullRes'))
-    scan_rate, ai_sampling_rate = extract_mat_meta(full_path)
-
-    if sorted_tiff_files:
-        with TiffFile(sorted_tiff_files[0]) as tif:
-            numZ = len(tif.pages)  # Assuming each page is a Z slice
-            image = cv2.imread(sorted_tiff_files[0])
-            numX = image.shape[0]
-            numY = image.shape[1]
-
-        # Create DataChunkIterator
-        data = DataChunkIterator(
-            data=iter_calc_h5(os.path.join(full_path, 'FullRes', 'video-array.h5'), numZ),
-            maxshape=None,
-            buffer_size=10,
-        )
+    # Create DataChunkIterator
+    data = DataChunkIterator(
+        data=iter_calc_h5(os.path.join(full_path, 'FullRes', 'video-array.h5'), numZ),
+        maxshape=None,
+        buffer_size=10,
+    )
 
     wrapped_data = H5DataIO(data=data, compression="gzip", compression_opts=4)
 
@@ -344,10 +259,10 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, loc
         optical_channel_plus=OptChannels,
         order_optical_channels=OpticalChannelRefs,
         device=device,
-        location=location,
-        grid_spacing=pixel_sizes,
-        grid_spacing_unit=unit,
-        reference_frame=f"Worm {location}"
+        location=metadata['location'],
+        grid_spacing=metadata['grid spacing'],
+        grid_spacing_unit=metadata['grid spacing unit'],
+        reference_frame=f"Worm {metadata['location']}"
     )
 
     calcium_image_series = MultiChannelVolumeSeries(
@@ -356,11 +271,10 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, loc
         comments="",
         data=data,
         device=device,
-        unit=unit,
+        unit=metadata['grid spacing unit'],
         scan_line_rate=scan_rate,
         dimension=[numX, numY, numZ],
         resolution=1.,
-        # smallest meaningful difference (in specified unit) between values in data: i.e. level of precision
         rate=ai_sampling_rate,  # sampling rate in hz
         imaging_volume=calc_imaging_volume,
     )
@@ -716,7 +630,7 @@ def build_nwb(nwbfile, datapath, metadata, main_device):
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
     calc_imaging_volume = build_gcamp(nwbfile, datapath, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
-                                      location, extract_pixel_sizes(metadata['comments']), 'um')
+                                      metadata)
 
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
         datapath, ImagingVol, calc_imaging_volume)
