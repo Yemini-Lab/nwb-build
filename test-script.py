@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import random
+import nrrd
 
 def update_frame(val):
     """
@@ -119,9 +120,28 @@ def update(val):
     ax.imshow(rgb_image)
     fig.canvas.draw_idle()
 
-nd2_paths = ['C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-03.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-04.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-05.nd2']
+def test_nrrd(file_path):
+    """
+    Reads a .nrrd file and prints its metadata.
+
+    Parameters:
+    file_path (str): The path to the .nrrd file.
+    """
+    try:
+        file, header = nrrd.read(file_path, index_order='C')
+
+        print(header['sizes'])
+        print(header['space directions'])
+        print(np.shape(np.array(file)))
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
 
 """
+nd2_paths = ['C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-03.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-04.nd2', 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-05.nd2']
+
+
 # Determine the number of frames in the smallest file
 min_frames = min(nd2reader.ND2Reader(f).sizes['t'] for f in nd2_paths)
 
@@ -144,5 +164,8 @@ slider.on_changed(update)
 plt.show()
 """
 
-file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.h5'
-h5_test(file_path)
+#file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.h5'
+#h5_test(file_path)
+
+# Replace 'path_to_file.nrrd' with the actual file path
+test_nrrd('C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\proj_neuropal\\2022-06-14-01\\NeuroPAL.nrrd')

@@ -27,6 +27,7 @@ from tifffile import TiffFile
 from tifffile import imread
 from tqdm import tqdm
 import nd2reader
+import nrrd
 
 
 def iterate_folders():
@@ -361,6 +362,13 @@ def build_channels(metadata):
     OpticalChannels = []
     OptChanRefData = []
 
+    excitation_dict = {
+        'OFP': 0,
+        'TagRFP': 0,
+        'mNeptune': 0,
+        'GCaMP': 0
+    }
+
     # Find all matches and convert to a set to remove duplicates
     fluorophores = set(re.findall(pattern, metadata['fluorophore']))
     fluorophores = sorted(list(fluorophores))
@@ -371,6 +379,8 @@ def build_channels(metadata):
             fluorophores.append(fluo)
 
     filters = [metadata['green cam filter'], metadata['red cam filter']]
+
+
 
     for eachFluo in fluorophores:
         OptChan = OpticalChannelPlus(
@@ -383,6 +393,30 @@ def build_channels(metadata):
         )
         OpticalChannels.append(OptChan)
         OptChanRefData.append(wave)
+
+    gcamp_OpticalChannels = []
+    gcamp_OptChanRefData = []
+
+    for fluor, des, wave in gcamp_channels:
+        excite = float(wave.split('-')[0])
+        emiss_mid = float(wave.split('-')[1])
+        emiss_range = float(wave.split('-')[2][:-1])
+        gcamp_OptChan = OpticalChannelPlus(
+            name=fluor,
+            description=des,
+            excitation_lambda=excite,
+            excitation_range=[excite - 1.5, excite + 1.5],
+            emission_range=[emiss_mid - emiss_range / 2, emiss_mid + emiss_range / 2],
+            emission_lambda=emiss_mid
+        )
+        gcamp_OpticalChannels.append(gcamp_OptChan)
+        gcamp_OptChanRefData.append(wave)
+
+    # Create OpticalChannelReferences object
+    gcamp_OpticalChannelRefs = OpticalChannelReferences(
+        name='gcamp_OpticalChannelRefs',
+        channels=gcamp_OptChanRefData
+    )
 
     """
     # Define channels and create OpticalChannelPlus objects
@@ -430,51 +464,23 @@ def build_channels(metadata):
 def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRefs):
     print("Building NeuroPAL volume...")
 
-    npal_channels = {
-        'OFP_run': 0,
-        'mNeptune_run': 0,
-        'TagRFP_run': 0
-    }
+    file, header = nrrd.read(f"{full_path}/prj_neuropal/{file_name}/NeuroPAL.nrrd", index_order='C')
 
-    for eachRun in metadata.keys():
-        if "OFP vs. GCaMP" in metadata[eachRun]['fluorophore']:
-            npal_channels['OFP_run']= eachRun
-            print(f"Found OFP run (Run {eachRun}).")
-        elif "mNeptune vs. GCaMP" in metadata[eachRun]['fluorophore']:
-            npal_channels['mNeptune_run']= eachRun
-            print(f"Found mNeptune run (Run {eachRun}).")
-        elif "BFP vs. TagRFP, mNeptune" in metadata[eachRun]['fluorophore']:
-            npal_channels['TagRFP_run']= eachRun
-            print(f"Found TagRFP run (Run {eachRun}).")
+    # Transpose the data to the order X, Y, Z, C
+    data = np.transpose(file, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
 
-    npal_paths = [f"{full_path}/{file_name[:-1]}/{eachRun}" for eachRun in npal_channels.values()]
 
-    if 0 not in npal_channels.values():
-        # Load the colormap.tif file into a numpy array
-        raw_file = f"{full_path}/colormap.tif"  # Replace with the actual path to your colormap.tif
-        data = skio.imread(raw_file)
-
-        # Transpose the data to the order X, Y, Z, C
-        data = np.transpose(data, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
-
-        # Define RGBW channels
-        RGBW_channels = [0, 1, 3, 4]
-
-        # Create MultiChannelVolume object
-        Image = MultiChannelVolume(
-            name='NeuroPALImageRaw',
-            order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
-            description=f"Colormap of {metadata['identifier']}.",
-            RGBW_channels=RGBW_channels,
-            data=H5DataIO(data=data, compression=True),
-            imaging_volume=ImagingVol  # Assuming this is defined earlier
-        )
-        print("Successfully built NeuroPAL volume.")
-        return Image
-    else:
-        for eachRun in npal_channels.keys():
-            if npal_channels[eachRun] == 0:
-                print(f"ERROR: Could not find {eachRun} channel! No NeuroPAL volume constructed.")
+    # Create MultiChannelVolume object
+    Image = MultiChannelVolume(
+        name='NeuroPALImageRaw',
+        order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
+        description=f"NeuroPAL volume of {metadata['identifier']}.",
+        RGBW_channels=range(min(header['sizes'])),
+        data=H5DataIO(data=data, compression=True),
+        imaging_volume=ImagingVol
+    )
+    print("Successfully built NeuroPAL volume.")
+    return Image
 
 
 def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
@@ -641,23 +647,26 @@ def build_nwb(nwb_file, file_info, run, main_device):
     # behavior = build_behavior(full_path, metadata)
     OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs = build_channels(metadata)
 
-    # Create ImagingVolume object
-    ImagingVol = ImagingVolume(
-        name='NeuroPALImVol',
-        optical_channel_plus=OpticalChannels,
-        order_optical_channels=OpticalChannelRefs,
-        description='NeuroPAL image of C. elegans',
-        device=main_device,
-        location=metadata['location'],
-        grid_spacing=metadata['grid spacing'],
-        grid_spacing_unit=metadata['grid spacing unit'],
-        origin_coords=[0, 0, 0],
-        origin_coords_unit=metadata['grid spacing unit'],
-        reference_frame=f"Worm {metadata['location']}"
-    )
+    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}"):
+        # Create ImagingVolume object
+        ImagingVol = ImagingVolume(
+            name='NeuroPALImVol',
+            optical_channel_plus=OpticalChannels,
+            order_optical_channels=OpticalChannelRefs,
+            description='NeuroPAL image of C. elegans',
+            device=main_device,
+            location=metadata['location'],
+            grid_spacing=metadata['grid spacing'],
+            grid_spacing_unit=metadata['grid spacing unit'],
+            origin_coords=[0, 0, 0],
+            origin_coords_unit=metadata['grid spacing unit'],
+            reference_frame=f"Worm {metadata['location']}"
+        )
 
-    Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
-    nwb_file.add_imaging_plane(ImagingVol)
+        Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
+        nwb_file.add_imaging_plane(ImagingVol)
+    else:
+        print('No NeuroPAL.')
 
     processed_module = nwb_file.create_processing_module(
         name='Processed',
@@ -671,7 +680,6 @@ def build_nwb(nwb_file, file_info, run, main_device):
     video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
         data_path, ImagingVol, calc_imaging_volume)
     build_activity(data_path, metadata, video_center_table)
-    build_nir(nwb_file, ImagingVol, h5_path)
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)
