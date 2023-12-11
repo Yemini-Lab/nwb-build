@@ -20,7 +20,7 @@ from hdmf.data_utils import DataChunkIterator
 from ndx_multichannel_volume import CElegansSubject, OpticalChannelReferences, OpticalChannelPlus, ImagingVolume, \
     MultiChannelVolume, MultiChannelVolumeSeries
 from pynwb import NWBFile, NWBHDF5IO
-from pynwb.behavior import SpatialSeries, Position
+from pynwb.behavior import SpatialSeries, Position, BehavioralTimeSeries, BehavioralEvents
 from pynwb.ophys import ImageSegmentation, PlaneSegmentation, \
     DfOverF, RoiResponseSeries
 from tifffile import TiffFile
@@ -28,6 +28,7 @@ from tifffile import imread
 from tqdm import tqdm
 import nd2reader
 import nrrd
+from pathlib import Path
 
 
 def iterate_folders():
@@ -174,20 +175,36 @@ def h5_memory_mapper(nd2_file, output_file):
         return
 
     shape = nd2_file.sizes
+    print(shape)
     h5_file = h5py.File(output_file, 'w')
+    shape = (shape['t'], shape['c'], 1, shape['y'], shape['x'])
     h5_file.create_dataset('dataset', shape, dtype='uint16')
 
     try:
         print("Populating the .h5 file...")
         for i in tqdm(range(shape[0]), desc="Processing frames"):
-            frame_data = nd2_file.get_frame_2D(c=i)
-            h5_file['dataset'][i, :, :, :, :] = frame_data
+            green_data = nd2_file.get_frame_2D(t=i, c=1)
+            red_data = nd2_file.get_frame_2D(t=i, c=2)
+            print(np.shape(green_data))
+            print(np.shape(h5_file['dataset'][i, 1, 1, :, :]))
+            h5_file['dataset'][i, 1, 1, :, :] = green_data
+            h5_file['dataset'][i, 2, 1, :, :] = red_data
     finally:
         print("Flushing changes and closing the file.")
         h5_file.close()
 
 
-def iter_calc_h5(filename, numZ):
+def iter_calc_h5(file_path):
+    nd2_file = nd2reader.ND2Reader(file_path)
+    f_shape = (nd2_file.sizes['t'], nd2_file.sizes['c'], 1, nd2_file.sizes['y'], nd2_file.sizes['x'])
+    for i in tqdm(range(f_shape[0]), desc="Processing time points"):
+        tpoint = np.zeros((nd2_file.sizes['y'], nd2_file.sizes['x'], 1, nd2_file.sizes['c']), dtype='uint16')
+        tpoint[:, :, 0, 0] = nd2_file.get_frame_2D(t=i, c=0)
+        tpoint[:, :, 0, 1] = nd2_file.get_frame_2D(t=i, c=1)
+
+        yield np.squeeze(tpoint)
+
+    """
     with h5py.File(filename, 'r') as h5_file:
         t, x, y, z, c = h5_file['dataset'].shape
 
@@ -197,6 +214,7 @@ def iter_calc_h5(filename, numZ):
                 tpoint[:, :, j, :] = h5_file['dataset'][i, :, :, j, :]
 
             yield np.squeeze(tpoint)
+    """
 
 
 # Build bright field NIR
@@ -240,18 +258,19 @@ def build_nir(nwbfile, ImagingVol, video_path):
 
 
 def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, metadata):
-    nd2_file, frames, channels = discover_nd2_files(os.path.join(full_path))
-    h5_memory_mapper(nd2_file, os.path.join(full_path, 'FullRes', 'video-array.h5'))
-    scan_rate = metadata['scan_rate']
-    ai_sampling_rate = metadata['ai_sampling_rate']
+    nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{full_path}\\{metadata['subject']}.nd2"))
+    #h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
 
-    numZ = nd2_file.sizes['z']
+    print(nd2_file.sizes)
+    scan_rate = 1.7/nd2_file.sizes['y']
+    ai_sampling_rate = 1.7
+
     numX = nd2_file.sizes['x']
     numY = nd2_file.sizes['y']
 
     # Create DataChunkIterator
     data = DataChunkIterator(
-        data=iter_calc_h5(os.path.join(full_path, 'FullRes', 'video-array.h5'), numZ),
+        data=iter_calc_h5(os.path.join(f"{full_path}\\{metadata['subject']}.nd2")),
         maxshape=None,
         buffer_size=10,
     )
@@ -278,7 +297,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         device=device,
         unit=metadata['grid spacing unit'],
         scan_line_rate=scan_rate,
-        dimension=[numX, numY, numZ],
+        dimension=[numX, numY],
         resolution=1.,
         rate=ai_sampling_rate,  # sampling rate in hz
         imaging_volume=calc_imaging_volume,
@@ -294,57 +313,57 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
     return calc_imaging_volume
 
 
-def build_devices(nwbfile, metadata, count):
-    for i in tqdm(range(1, int(count) + 1), desc="Building devices"):
-        device_info = metadata.get(f'DEVICE_{i}', {})
-        device_name = device_info.get('name', f'Unknown Device {i}')
-        device_description = device_info.get('description', 'No description available')
-        device_manufacturer = device_info.get('manufacturer', 'Unknown manufacturer')
+def build_devices(nwbfile, metadata):
+    main_device = nwbfile.create_device(
+            name=metadata['devices']['vol']['name'],
+            description=metadata['devices']['vol']['description'],
+            manufacturer=metadata['devices']['vol']['manufacturer']
+        )
+    nir_device = nwbfile.create_device(
+            name=metadata['devices']['nir']['name'],
+            description=metadata['devices']['nir']['description'],
+            manufacturer=metadata['devices']['nir']['manufacturer']
+        )
 
-        if i == 1:
-            main_device = nwbfile.create_device(
-                name=device_name,
-                description=device_description,
-                manufacturer=device_manufacturer
-            )
-        else:
-            nwbfile.create_device(
-                name=device_name,
-                description=device_description,
-                manufacturer=device_manufacturer
-            )
-
-    return main_device
+    return main_device, nir_device
 
 
-def build_file(file_data):
+def build_file(file_info):
+    print("Starting to build NWBFile object...")  # Debug print
+    file_data = file_info['metadata']
+
     # Create NWBFile object
     nwbfile = NWBFile(
-        session_description=file_data['description'],
-        identifier=file_data['date'],
-        session_start_time=file_data['start_time'],
-        lab=file_data['lab'],
-        institution=file_data['institution'],
-        related_publications=file_data['related_publications']
+        session_description=file_data[0]['notes'],
+        identifier=str(file_data[0]['date']),
+        session_start_time=file_data[0]['date'],
+        lab=file_info['lab'],
+        institution=file_info['institution'],
+        related_publications=file_info['related_publications']
     )
+    print("NWBFile object created.")  # Debug print
 
+    print("Creating CElegansSubject object...")  # Debug print
     # Create CElegansSubject object and add to NWBFile
     nwbfile.subject = CElegansSubject(
-        subject_id=f"{file_data['subject']}-{file_data['strain']}",
-        date_of_birth=file_data['date'],
-        growth_stage=file_data['age'],
-        growth_stage_time=file_data['growth_stage_time'],
-        cultivation_temp=float(file_data['cultivation_temp']),
-        description=file_data['notes'],
+        subject_id=f"{file_data[0]['subject']}-{file_data[0]['strain']}",
+        date_of_birth=file_data[0]['date'],
+        growth_stage=file_data[0]['age'],
+        growth_stage_time=str(np.nan),
+        cultivation_temp=float(file_info['cultivation_temp'][:-1]),
+        description=file_data[0]['notes'],
         species="C. Elegans",
-        sex=file_data['sex'],
-        strain=file_data['strain']
+        sex=file_data[0]['sex'],
+        strain=file_data[0]['strain']
     )
+    print("CElegansSubject object added to NWBFile.")  # Debug print
 
+    print("Extracting device info and building device objects...")  # Debug print
     # Extract device info & build device objects
-    main_device = build_devices(nwbfile, file_data.get('devices', {}), file_data.get('devices', {}).get('count', 0))
+    main_device, nir_device = build_devices(nwbfile, file_info)
+    print("Device objects built and added to NWBFile.")  # Debug print
 
-    return nwbfile, main_device
+    return nwbfile, main_device, nir_device
 
 
 def extract_pixel_sizes(input_str):
@@ -358,15 +377,17 @@ def extract_pixel_sizes(input_str):
 
 
 def build_channels(metadata):
+    print("Starting to build channels...")
     pattern = re.compile(r'\b[A-Za-z0-9]+FP\b')
     OpticalChannels = []
     OptChanRefData = []
 
     excitation_dict = {
-        'OFP': 0,
-        'TagRFP': 0,
-        'mNeptune': 0,
-        'GCaMP': 0
+        'OFP': {'ex_lambda': float(488), 'em_lambda': float(589), 'cam': 'red'},
+        'TagRFP': {'ex_lambda': float(561), 'em_lambda': float(584), 'cam': 'red'},
+        'BFP': {'ex_lambda': float(405), 'em_lambda': float(445), 'cam': 'red'},
+        'mNeptune': {'ex_lambda': float(637), 'em_lambda': float(650), 'cam': 'red'},
+        'GCaMP': {'ex_lambda': float(488), 'em_lambda': float(513), 'cam': 'green'},
     }
 
     # Find all matches and convert to a set to remove duplicates
@@ -378,55 +399,66 @@ def build_channels(metadata):
         if fluo in metadata['fluorophore']:
             fluorophores.append(fluo)
 
-    filters = [metadata['green cam filter'], metadata['red cam filter']]
+    print(f"Identified fluorophores: {fluorophores}")
 
+    filters = {}
 
+    for eachCam in ['green', 'red']:
+        for note in [' ', '+ NDF', '-TRF']:
+            waves = metadata[f'{eachCam} cam filter'].replace(note, '')
 
+        if '/' in metadata[f'{eachCam} cam filter']:
+            waves = waves.split('/')
+
+            filters[eachCam] = {
+                'c_point': float(waves[0]),
+                'width': float(waves[1]),
+            }
+        else:
+            if 'LP' in metadata[f'{eachCam} cam filter']:
+                waves = waves[:-2]
+
+                filters[eachCam] = {
+                    'c_point': float(waves),
+                    'width': np.nan,
+                }
+
+    print(f"Camera filters processed: {filters}")
+
+    # Channels is a list of tuples where each tuple contains the fluorophore used, the specific emission filter used, and a short description
+    # structured as "excitation wavelength - emission filter center point- width of emission filter in nm"
+    # Make sure this list is in the same order as the channels in your data
     for eachFluo in fluorophores:
-        OptChan = OpticalChannelPlus(
-            name=eachFluo,
-            description=eachFluo,
-            excitation_lambda=0,
-            excitation_range=0,
-            emission_range=0,
-            emission_lambda=0
-        )
-        OpticalChannels.append(OptChan)
-        OptChanRefData.append(wave)
+        fluo_cam = filters[excitation_dict[eachFluo]['cam']]
+        if fluo_cam['width'] != np.nan:
+            OptChan = OpticalChannelPlus(
+                name=eachFluo,
+                description=eachFluo,
+                excitation_lambda=excitation_dict[eachFluo]['ex_lambda'],
+                excitation_range=[excitation_dict[eachFluo]['ex_lambda'] - 1.5,
+                                  excitation_dict[eachFluo]['ex_lambda'] + 1.5],
+                emission_range=[fluo_cam['c_point'] - fluo_cam['width'] / 2,
+                                fluo_cam['c_point'] + fluo_cam['width'] / 2],
+                emission_lambda=excitation_dict[eachFluo]['em_lambda']
+            )
+            OpticalChannels.append(OptChan)
+            OptChanRefData.append(
+                f"{excitation_dict[eachFluo]['ex_lambda']}-{fluo_cam['c_point']}-{fluo_cam['width']}nm")
+        else:
+            OptChan = OpticalChannelPlus(
+                name=eachFluo,
+                description=eachFluo,
+                excitation_lambda=excitation_dict[eachFluo]['ex_lambda'],
+                excitation_range=[excitation_dict[eachFluo]['ex_lambda'] - 1.5,
+                                  excitation_dict[eachFluo]['ex_lambda'] + 1.5],
+                emission_range=[fluo_cam['c_point'] - fluo_cam['width'] / 2, np.nan],
+                emission_lambda=excitation_dict[eachFluo]['em_lambda']
+            )
+            OpticalChannels.append(OptChan)
+            OptChanRefData.append(f"{excitation_dict[eachFluo]['ex_lambda']}-{fluo_cam['c_point']}LP")
 
-    gcamp_OpticalChannels = []
-    gcamp_OptChanRefData = []
 
-    for fluor, des, wave in gcamp_channels:
-        excite = float(wave.split('-')[0])
-        emiss_mid = float(wave.split('-')[1])
-        emiss_range = float(wave.split('-')[2][:-1])
-        gcamp_OptChan = OpticalChannelPlus(
-            name=fluor,
-            description=des,
-            excitation_lambda=excite,
-            excitation_range=[excite - 1.5, excite + 1.5],
-            emission_range=[emiss_mid - emiss_range / 2, emiss_mid + emiss_range / 2],
-            emission_lambda=emiss_mid
-        )
-        gcamp_OpticalChannels.append(gcamp_OptChan)
-        gcamp_OptChanRefData.append(wave)
-
-    # Create OpticalChannelReferences object
-    gcamp_OpticalChannelRefs = OpticalChannelReferences(
-        name='gcamp_OpticalChannelRefs',
-        channels=gcamp_OptChanRefData
-    )
-
-    """
-    # Define channels and create OpticalChannelPlus objects
-    channels = [("mTagBFP2", "", "405-488-50m"),
-                ("CyOFP1", "", "488-594-30m"),
-                ("GCaMP6s", "", "488-594-30m"),
-                ("TagRFP-T", "", "594-637-70m"),
-                ("mNeptune 2.5", "", "561-594-75m")]
-    gcamp_channels = [("TagRFP-T", "", "594-637-70m"),
-                      ("GCaMP6s", "", "488-594-30m")]
+    print("Channels built.")
 
     # Create OpticalChannelReferences object
     OpticalChannelRefs = OpticalChannelReferences(
@@ -434,31 +466,14 @@ def build_channels(metadata):
         channels=OptChanRefData
     )
 
-    gcamp_OpticalChannels = []
-    gcamp_OptChanRefData = []
+    print("OpticalChannelReferences created.")
+    return OpticalChannels, OpticalChannelRefs
 
-    for fluor, des, wave in gcamp_channels:
-        excite = float(wave.split('-')[0])
-        emiss_mid = float(wave.split('-')[1])
-        emiss_range = float(wave.split('-')[2][:-1])
-        gcamp_OptChan = OpticalChannelPlus(
-            name=fluor,
-            description=des,
-            excitation_lambda=excite,
-            excitation_range=[excite - 1.5, excite + 1.5],
-            emission_range=[emiss_mid - emiss_range / 2, emiss_mid + emiss_range / 2],
-            emission_lambda=emiss_mid
-        )
-        gcamp_OpticalChannels.append(gcamp_OptChan)
-        gcamp_OptChanRefData.append(wave)
-
-    # Create OpticalChannelReferences object
-    gcamp_OpticalChannelRefs = OpticalChannelReferences(
-        name='gcamp_OpticalChannelRefs',
-        channels=gcamp_OptChanRefData
-    )
-    """
-    return OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs
+# Convert each string into a tuple of integers, handling non-numeric characters
+def parse_coordinate(coord):
+    # Replace non-numeric characters (except commas) with an empty string
+    cleaned = ''.join(c if c.isdigit() or c == ',' else '' for c in coord)
+    return tuple(map(int, cleaned.split(',')))
 
 
 def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRefs):
@@ -469,13 +484,12 @@ def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRef
     # Transpose the data to the order X, Y, Z, C
     data = np.transpose(file, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
 
-
     # Create MultiChannelVolume object
     Image = MultiChannelVolume(
         name='NeuroPALImageRaw',
         order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
-        description=f"NeuroPAL volume of {metadata['identifier']}.",
-        RGBW_channels=range(min(header['sizes'])),
+        description=f"NeuroPAL volume of {metadata['metadata'][0]['subject']}.",
+        RGBW_channels=list(range(min(header['sizes']))),
         data=H5DataIO(data=data, compression=True),
         imaging_volume=ImagingVol
     )
@@ -595,60 +609,69 @@ def build_activity(full_path, metadata, table):
     )
 
 
-def build_behavior(full_path, metadata):
-    try:
-        mat_file = next(f for f in os.listdir(full_path) if f.endswith('behavior.mat'))
-    except StopIteration:
-        print("-NO BEHAVIOR FOUND.")
-        return None
+def build_behavior(data_path, file_name, metadata):
+    json = open(f"{data_path}\\processed\\{file_name}.json")
 
-    mat_data = scipy.io.loadmat(os.path.join(full_path, mat_file))
+    behavior_dict = {
+        'dorsalness': {'type':'time series','description':'The dorsalness metric is computed similarly to the forwardness metric.'},
+        'head_curvature': {'type':'time series','description':'Head curvature is computed as the angle between the points 1, 5, and 8 (ie: the angle between θ→_1,5 and θ→_5,8 ). These points are 0 μm, 35.4 μm, and 61.9 μm along the worm’s spline, respectively.'},
+        'angular_velocity': {'type':'time series','description':'Angular velocity is computed as smoothed (dθ→_1,2)/(dt) , which is computed with a linear Savitzky-Golay filter with a width of 300 time points (15 seconds) centered on the current time point.'},
+        'reversal_events': {'type':'event','description':''},
+        'feedingness': {'type':'time series','description':'The feedingness metric is computed similarly to the forwardness metric.'},
+        'velocity': {'type':'time series','description':'First, we read out the (x,y) position of the stage (in mm) as it tracks the worm. To account for any delay between the worm’s motion and stage tracking, at each time point we added the distance from the center of the image (corresponding to the stage position) to the position of the metacorpus of pharynx (detected from our neural network used in tracking). This then gave us the position of the metacorpus over time. To decrease the noise level (e.g., from neural network and stage jitter), we then applied a Group-Sparse Total-Variation Denoising algorithm to the metacorpus position. Differentiating the metacorpus position then gives us a movement vector of the animal. Because this movement vector was computed from the location of the metacorpus, it contains two components of movement: the animal’s velocity in its direction of motion, and oscillations of the animal’s head perpendicular to that direction. To filter out these oscillations, we projected the movement vector onto the animal’s facing direction, i.e. the vector from the grinder of the pharynx to its metacorpus (computed from the stage-tracking neural network output). The result of this projection is a signed scalar, which is reported as the animal’s velocity.'},
+        'body_curvature': {'type':'time series','description':'Body curvature is computed as the standard deviation of θ→_(i, i+1) for i between 1 and 31 (ie: going up to 265 μm along the worm’s spline). This value was selected such that this length of the animal would almost never be cropped out of the NIR camera’s field of view. To ensure that these angles are continuous in i , they may each have 2pi added or subtracted as appropriate.'},
+        'forwardness': {'type':'time series','description':"The forwardness metric for a neuron class is computed as F_D * (σM/σD) * signal, where F_D is the deconvolved forwardness of the Cartesian average μ_cart of the hierarchical model fit to that neuron class (see “deconvolved activity matrix” and “hierarchical model” methods sections above for more details; the behavior values used in the deconvolved forwardness computation were constructed by appending together all of the behaviors for the neuron class), σD is the standard deviation of the model fit corresponding to μ_cart with s = 0, σM is the standard deviation of the model fit corresponding to μ_cart, σD, and signal is defined as in the “Statistical encoding tests” section of the related publication. This ratio is intended to correct for the fact that the model parameters need to be larger (resulting in larger deconvolved forwardness values) for the same neural response size if the neuron has a long EWMA decay."},
+        'pumping': {'type':'time series','description':'Pumping rate was manually annotated using Datavyu, by counting each pumping stroke while watching videos slowed down the 25% of their real-time speeds. The rate is then filtered via a moving average with a width of 80 time points (4 seconds) to smoothen the trace into a pumping rate rather than individual pumping strokes.'},
+    }
 
-    try:
-        behavioral_data = mat_data['behavior_all']
-    except:
-        behavioral_data = mat_data['behavior_total']
+    behavior = []
 
-    # Initialize an empty set to store unique frame numbers
-    frame_set = set()
+    for eachBehavior in behavior_dict.keys():
+        if behavior_dict[eachBehavior]['type'] == 'time series':
+            thisBehavior = BehavioralTimeSeries(
+                name=eachBehavior,
+                description=behavior_dict[eachBehavior]['description'],
+                data=json[eachBehavior]
+            )
+        elif behavior_dict[eachBehavior]['type'] == 'event':
+            data = np.zeros(np.shape(json['timestamp_confocal']))
+            for eachEvent in json[eachBehavior]:
+                start = eachEvent[0]
+                end = eachEvent[1]
+            thisBehavior = BehavioralEvents(
+                name=eachBehavior,
+                description=behavior_dict[eachBehavior]['description'],
+                data=json[eachBehavior]
+            )
+        elif behavior_dict[eachBehavior]['type'] == 'coded':
+            thisBehavior = SpatialSeries(
+                name=eachBehavior,
+                description=behavior_dict[eachBehavior]['description'],
+                data=json[eachBehavior]
+            )
 
-    # List all files in the folder
-    files = os.listdir(os.path.join(full_path, 'FullRes'))
-
-    # Regular expression to match the filename pattern
-    regex_pattern = r"worm\d+_run\d+_t(\d+)_\w\.tiff"
-
-    for file in files:
-        match = re.match(regex_pattern, file)
-        if match:
-            frame_number = int(match.group(1))
-            frame_set.add(frame_number)
-
-    behavior = SpatialSeries(
-        name='Coded_behavior',
-        description=metadata['behavior']['description'],
-        comments='',
-        data=behavioral_data,
-        reference_frame='See description.',
-        timestamps=sorted(list(frame_set)),
-    )
+        behavior += [thisBehavior]
 
     return behavior
 
 
-def build_nwb(nwb_file, file_info, run, main_device):
-    data_path = file_info['path']
-    file_name = file_info['name']
+def build_nwb(nwb_file, file_info, run, main_device, nir_device):
+    print("Starting to build NWB for run:", run)  # Debug print
+
+    data_path = Path(file_info['path']).parent
+    file_name = f"{file_info['date']}-0{run+1}"
     metadata = file_info['metadata'][run]
+    metadata['grid spacing'] = [0.54, 0.54, 0.54]
+    metadata['grid spacing unit'] = 'um'
 
     nd2_path = f"{data_path}/{file_name}.nd2"
     h5_path = f"{data_path}/{file_name}.h5"
 
-    # behavior = build_behavior(full_path, metadata)
-    OpticalChannels, OpticalChannelRefs, gcamp_OpticalChannels, gcamp_OpticalChannelRefs = build_channels(metadata)
+    OpticalChannels, OpticalChannelRefs = build_channels(metadata)
+    behavior = build_behavior(data_path, file_name, metadata)
 
-    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}"):
-        # Create ImagingVolume object
+    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}/NeuroPAL.nrrd"):
+        print("Creating ImagingVolume object for NeuroPAL...")  # Debug print
         ImagingVol = ImagingVolume(
             name='NeuroPALImVol',
             optical_channel_plus=OpticalChannels,
@@ -666,34 +689,100 @@ def build_nwb(nwb_file, file_info, run, main_device):
         Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
         nwb_file.add_imaging_plane(ImagingVol)
     else:
-        print('No NeuroPAL.')
+        print('No NeuroPAL found.')  # Debug print
 
+    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}/neuron_rois.nrrd"):
+        print("Processing neuron ROIs...")  # Debug print
+        file, header = nrrd.read(f"{data_path}/prj_neuropal/{file_name}/neuron_rois.nrrd", index_order='C')
+        labels = pd.read_excel(f"{data_path}/prj_neuropal/{file_name}/{file_name} Neuron ID.xlsx")
+        #print(np.shape(file))
+        data = np.transpose(file, (2, 1, 0))
+
+        vs = PlaneSegmentation(
+            name='NeuronSegmentationROIs',
+            description='Segmentation of NeuroPAL volume. IDs found in NeuronCenters.',
+            imaging_plane=ImagingVol,
+        )
+
+        vs.add_roi(image_mask=data)
+
+        coord_base = PlaneSegmentation(
+            name='NeuronCenters',
+            description='Centers of NeuroPAL volume.',
+            imaging_plane=ImagingVol,
+        )
+
+        coordinates = [parse_coordinate(coord) for coord in labels['Coordinates ']]
+
+        for neuron in coordinates:
+            coord_base.add_roi(pixel_mask=[(neuron[0], neuron[1], neuron[2])])
+
+        coord_base.add_column(
+            name='ROI_ID_labels',
+            description='ROI ID labels from segmentation image mask.',
+            data=list(labels['ROI ID']),
+            index=False,
+        )
+
+        coord_base.add_column(
+            name='Neuron_Names',
+            description='Neuron Names',
+            data=list(labels['Class']),
+            index=False,
+        )
+
+        NeuroPALImSeg = ImageSegmentation(
+            name='NeuroPALSegmentation',
+        )
+
+        NeuroPALImSeg.add_plane_segmentation(vs)
+        NeuroPALImSeg.add_plane_segmentation(coord_base)
+
+        # Create ImagingVolume object
+        ImagingVol = ImagingVolume(
+            name='NeuronSegmentation',
+            optical_channel_plus=OpticalChannels,
+            order_optical_channels=OpticalChannelRefs,
+            description='Neuron Centers & Neuron ROIs.',
+            device=main_device,
+            location=metadata['location'],
+            grid_spacing=metadata['grid spacing'],
+            grid_spacing_unit=metadata['grid spacing unit'],
+            origin_coords=[0, 0, 0],
+            origin_coords_unit=metadata['grid spacing unit'],
+            reference_frame=f"Worm {metadata['location']}"
+        )
+
+        Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
+        nwb_file.add_imaging_plane(ImagingVol)
+        print("Neuron ROIs processed and added to NWBFile.")  # Debug print
+
+    print("Creating processed module...")  # Debug print
     processed_module = nwb_file.create_processing_module(
         name='Processed',
         description='Processed image data and metadata.'
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwb_file, nd2_path, gcamp_OpticalChannels, gcamp_OpticalChannelRefs, main_device,
-                                      metadata)
+    calc_imaging_volume = build_gcamp(nwb_file, data_path, OpticalChannels, OpticalChannelRefs, main_device, metadata)
 
-    video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
-        data_path, ImagingVol, calc_imaging_volume)
-    build_activity(data_path, metadata, video_center_table)
+    build_nir(nwb_file, ImagingVol, h5_path)
+    #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
+    #    data_path, ImagingVol, calc_imaging_volume)
+    #build_activity(data_path, metadata, video_center_table)
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)
     processed_module.add(OpticalChannelRefs)
-    processed_module.add(gcamp_OpticalChannelRefs)
-    # if behavior is not None:
-    #    processed_module.add(behavior)
+    for eachBehavior in behavior:
+        processed_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
     save_path = data_path + ".nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()
-
+    print("NWB file built and saved at:", save_path)  # Debug print
 
 if __name__ == "__main__":
     iterate_folders()

@@ -85,10 +85,15 @@ def h5_test(file_path):
     with h5py.File(file_path, 'r') as hdf:
         for dataset in hdf:
             print(dataset)
-        dataset = 'img_nir'
+        dataset = 'pos_feature'
         if dataset in hdf:
             data = hdf[dataset][:]
             print(data.shape)
+            print(data[5])
+            print(data[25])
+            print(data[55])
+            print(data[75])
+            print(data[-115])
         else:
             print(f"Dataset {dataset} not found in the file.")
 
@@ -164,8 +169,8 @@ slider.on_changed(update)
 plt.show()
 """
 
-#file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.h5'
-#h5_test(file_path)
+file_path = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\2022-06-14-01.h5'
+h5_test(file_path)
 
-# Replace 'path_to_file.nrrd' with the actual file path
-test_nrrd('C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\proj_neuropal\\2022-06-14-01\\NeuroPAL.nrrd')
+## Replace 'path_to_file.nrrd' with the actual file path
+#test_nrrd('C:\\Users\\sep27\\Documents\\[X] Data\\flavell\\proj_neuropal\\2022-06-14-01\\neuron_rois.nrrd')
