@@ -5,3 +5,4 @@
 .idea/modules.xml
 .idea/nwb-build.iml
 .idea/vcs.xml
+*.pyc

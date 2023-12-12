@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import scipy.io
 import skimage.io as skio
+import typing_extensions
 from dateutil import tz
 from hdmf.backends.hdf5.h5_utils import H5DataIO
 from hdmf.data_utils import DataChunkIterator
@@ -610,49 +611,56 @@ def build_activity(full_path, metadata, table):
 
 
 def build_behavior(data_path, file_name, metadata):
-    json = open(f"{data_path}\\processed\\{file_name}.json")
+    with open(f"{data_path}\\processed\\{file_name}.json", 'r') as file:
+        json_data = json.load(file)
 
-    behavior_dict = {
-        'dorsalness': {'type':'time series','description':'The dorsalness metric is computed similarly to the forwardness metric.'},
-        'head_curvature': {'type':'time series','description':'Head curvature is computed as the angle between the points 1, 5, and 8 (ie: the angle between θ→_1,5 and θ→_5,8 ). These points are 0 μm, 35.4 μm, and 61.9 μm along the worm’s spline, respectively.'},
-        'angular_velocity': {'type':'time series','description':'Angular velocity is computed as smoothed (dθ→_1,2)/(dt) , which is computed with a linear Savitzky-Golay filter with a width of 300 time points (15 seconds) centered on the current time point.'},
-        'reversal_events': {'type':'event','description':''},
-        'feedingness': {'type':'time series','description':'The feedingness metric is computed similarly to the forwardness metric.'},
-        'velocity': {'type':'time series','description':'First, we read out the (x,y) position of the stage (in mm) as it tracks the worm. To account for any delay between the worm’s motion and stage tracking, at each time point we added the distance from the center of the image (corresponding to the stage position) to the position of the metacorpus of pharynx (detected from our neural network used in tracking). This then gave us the position of the metacorpus over time. To decrease the noise level (e.g., from neural network and stage jitter), we then applied a Group-Sparse Total-Variation Denoising algorithm to the metacorpus position. Differentiating the metacorpus position then gives us a movement vector of the animal. Because this movement vector was computed from the location of the metacorpus, it contains two components of movement: the animal’s velocity in its direction of motion, and oscillations of the animal’s head perpendicular to that direction. To filter out these oscillations, we projected the movement vector onto the animal’s facing direction, i.e. the vector from the grinder of the pharynx to its metacorpus (computed from the stage-tracking neural network output). The result of this projection is a signed scalar, which is reported as the animal’s velocity.'},
-        'body_curvature': {'type':'time series','description':'Body curvature is computed as the standard deviation of θ→_(i, i+1) for i between 1 and 31 (ie: going up to 265 μm along the worm’s spline). This value was selected such that this length of the animal would almost never be cropped out of the NIR camera’s field of view. To ensure that these angles are continuous in i , they may each have 2pi added or subtracted as appropriate.'},
-        'forwardness': {'type':'time series','description':"The forwardness metric for a neuron class is computed as F_D * (σM/σD) * signal, where F_D is the deconvolved forwardness of the Cartesian average μ_cart of the hierarchical model fit to that neuron class (see “deconvolved activity matrix” and “hierarchical model” methods sections above for more details; the behavior values used in the deconvolved forwardness computation were constructed by appending together all of the behaviors for the neuron class), σD is the standard deviation of the model fit corresponding to μ_cart with s = 0, σM is the standard deviation of the model fit corresponding to μ_cart, σD, and signal is defined as in the “Statistical encoding tests” section of the related publication. This ratio is intended to correct for the fact that the model parameters need to be larger (resulting in larger deconvolved forwardness values) for the same neural response size if the neuron has a long EWMA decay."},
-        'pumping': {'type':'time series','description':'Pumping rate was manually annotated using Datavyu, by counting each pumping stroke while watching videos slowed down the 25% of their real-time speeds. The rate is then filtered via a moving average with a width of 80 time points (4 seconds) to smoothen the trace into a pumping rate rather than individual pumping strokes.'},
-    }
+        behavior_dict = {
+            'dorsalness': {'type':'time series','description':'The dorsalness metric is computed similarly to the forwardness metric.'},
+            'head_curvature': {'type':'time series','description':'Head curvature is computed as the angle between the points 1, 5, and 8 (ie: the angle between θ→_1,5 and θ→_5,8 ). These points are 0 μm, 35.4 μm, and 61.9 μm along the worm’s spline, respectively.'},
+            'angular_velocity': {'type':'time series','description':'Angular velocity is computed as smoothed (dθ→_1,2)/(dt) , which is computed with a linear Savitzky-Golay filter with a width of 300 time points (15 seconds) centered on the current time point.'},
+            'reversal_events': {'type':'event','description':''},
+            'feedingness': {'type':'time series','description':'The feedingness metric is computed similarly to the forwardness metric.'},
+            'velocity': {'type':'time series','description':'First, we read out the (x,y) position of the stage (in mm) as it tracks the worm. To account for any delay between the worm’s motion and stage tracking, at each time point we added the distance from the center of the image (corresponding to the stage position) to the position of the metacorpus of pharynx (detected from our neural network used in tracking). This then gave us the position of the metacorpus over time. To decrease the noise level (e.g., from neural network and stage jitter), we then applied a Group-Sparse Total-Variation Denoising algorithm to the metacorpus position. Differentiating the metacorpus position then gives us a movement vector of the animal. Because this movement vector was computed from the location of the metacorpus, it contains two components of movement: the animal’s velocity in its direction of motion, and oscillations of the animal’s head perpendicular to that direction. To filter out these oscillations, we projected the movement vector onto the animal’s facing direction, i.e. the vector from the grinder of the pharynx to its metacorpus (computed from the stage-tracking neural network output). The result of this projection is a signed scalar, which is reported as the animal’s velocity.'},
+            'body_curvature': {'type':'time series','description':'Body curvature is computed as the standard deviation of θ→_(i, i+1) for i between 1 and 31 (ie: going up to 265 μm along the worm’s spline). This value was selected such that this length of the animal would almost never be cropped out of the NIR camera’s field of view. To ensure that these angles are continuous in i , they may each have 2pi added or subtracted as appropriate.'},
+            'forwardness': {'type':'time series','description':"The forwardness metric for a neuron class is computed as F_D * (σM/σD) * signal, where F_D is the deconvolved forwardness of the Cartesian average μ_cart of the hierarchical model fit to that neuron class (see “deconvolved activity matrix” and “hierarchical model” methods sections above for more details; the behavior values used in the deconvolved forwardness computation were constructed by appending together all of the behaviors for the neuron class), σD is the standard deviation of the model fit corresponding to μ_cart with s = 0, σM is the standard deviation of the model fit corresponding to μ_cart, σD, and signal is defined as in the “Statistical encoding tests” section of the related publication. This ratio is intended to correct for the fact that the model parameters need to be larger (resulting in larger deconvolved forwardness values) for the same neural response size if the neuron has a long EWMA decay."},
+            'pumping': {'type':'time series','description':'Pumping rate was manually annotated using Datavyu, by counting each pumping stroke while watching videos slowed down the 25% of their real-time speeds. The rate is then filtered via a moving average with a width of 80 time points (4 seconds) to smoothen the trace into a pumping rate rather than individual pumping strokes.'},
+        }
 
-    behavior = []
+        behavior = []
 
-    for eachBehavior in behavior_dict.keys():
-        if behavior_dict[eachBehavior]['type'] == 'time series':
-            thisBehavior = BehavioralTimeSeries(
-                name=eachBehavior,
-                description=behavior_dict[eachBehavior]['description'],
-                data=json[eachBehavior]
-            )
-        elif behavior_dict[eachBehavior]['type'] == 'event':
-            data = np.zeros(np.shape(json['timestamp_confocal']))
-            for eachEvent in json[eachBehavior]:
-                start = eachEvent[0]
-                end = eachEvent[1]
-            thisBehavior = BehavioralEvents(
-                name=eachBehavior,
-                description=behavior_dict[eachBehavior]['description'],
-                data=json[eachBehavior]
-            )
-        elif behavior_dict[eachBehavior]['type'] == 'coded':
-            thisBehavior = SpatialSeries(
-                name=eachBehavior,
-                description=behavior_dict[eachBehavior]['description'],
-                data=json[eachBehavior]
-            )
+        for eachBehavior in behavior_dict.keys():
+            description = behavior_dict[eachBehavior]['description']
+            data = json_data.get(eachBehavior)
+            timestamps = json_data.get('timestamp_confocal')
+            if behavior_dict[eachBehavior]['type'] == 'time series':
+                thisBehavior = BehavioralTimeSeries(name=eachBehavior)
+                thisBehavior.create_timeseries(name=eachBehavior,
+                                                data=data,
+                                                timestamps=timestamps,
+                                                unit='')
+            elif behavior_dict[eachBehavior]['type'] == 'event':
+                ts = np.zeros(np.shape(timestamps))
 
-        behavior += [thisBehavior]
+                for eachEvent in data:
+                    start = eachEvent[0]
+                    end = eachEvent[1]
+                    ts[start:end] = 1
 
-    return behavior
+                thisBehavior = BehavioralEvents(name=eachBehavior)
+                thisBehavior.create_timeseries(name=eachBehavior,
+                                                data=ts,
+                                                timestamps=timestamps,
+                                                unit='')
+            elif behavior_dict[eachBehavior]['type'] == 'coded':
+                thisBehavior = SpatialSeries(
+                    name=eachBehavior,
+                    description=behavior_dict[eachBehavior]['description'],
+                    data=data
+                )
+
+            behavior += [thisBehavior]
+
+        return behavior
 
 
 def build_nwb(nwb_file, file_info, run, main_device, nir_device):
@@ -717,10 +725,18 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         for neuron in coordinates:
             coord_base.add_roi(pixel_mask=[(neuron[0], neuron[1], neuron[2])])
 
+        roi_ids = []
+        for item in list(labels['ROI ID']):
+            if isinstance(item, str):
+                first_int = int(item.split()[0])
+                roi_ids.append(first_int)
+            else:
+                roi_ids.append(item)
+
         coord_base.add_column(
             name='ROI_ID_labels',
             description='ROI ID labels from segmentation image mask.',
-            data=list(labels['ROI ID']),
+            data=roi_ids,
             index=False,
         )
 
@@ -778,7 +794,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         processed_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = data_path + ".nwb"
+    save_path = f"{data_path}\\{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()

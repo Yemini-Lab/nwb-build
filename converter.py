@@ -47,7 +47,7 @@ devices = {
         },
 }
 
-directory = 'C:\\Users\\sep27\\Documents\\[X] Data\\flavell'
+directory = 'C:\\Users\\Kevin\\Documents\\data'
 metadata_file = pd.read_excel(f'{directory}\\flavell_data.xlsx')
 
 
