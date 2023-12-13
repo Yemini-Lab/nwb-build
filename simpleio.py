@@ -260,10 +260,10 @@ def build_nir(nwbfile, ImagingVol, video_path):
 
 def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, metadata):
     nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{full_path}\\{metadata['subject']}.nd2"))
-    #h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
+    # h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
 
     print(nd2_file.sizes)
-    scan_rate = 1.7/nd2_file.sizes['y']
+    scan_rate = 1.7 / nd2_file.sizes['y']
     ai_sampling_rate = 1.7
 
     numX = nd2_file.sizes['x']
@@ -316,15 +316,15 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
 
 def build_devices(nwbfile, metadata):
     main_device = nwbfile.create_device(
-            name=metadata['devices']['vol']['name'],
-            description=metadata['devices']['vol']['description'],
-            manufacturer=metadata['devices']['vol']['manufacturer']
-        )
+        name=metadata['devices']['vol']['name'],
+        description=metadata['devices']['vol']['description'],
+        manufacturer=metadata['devices']['vol']['manufacturer']
+    )
     nir_device = nwbfile.create_device(
-            name=metadata['devices']['nir']['name'],
-            description=metadata['devices']['nir']['description'],
-            manufacturer=metadata['devices']['nir']['manufacturer']
-        )
+        name=metadata['devices']['nir']['name'],
+        description=metadata['devices']['nir']['description'],
+        manufacturer=metadata['devices']['nir']['manufacturer']
+    )
 
     return main_device, nir_device
 
@@ -458,7 +458,6 @@ def build_channels(metadata):
             OpticalChannels.append(OptChan)
             OptChanRefData.append(f"{excitation_dict[eachFluo]['ex_lambda']}-{fluo_cam['c_point']}LP")
 
-
     print("Channels built.")
 
     # Create OpticalChannelReferences object
@@ -469,6 +468,7 @@ def build_channels(metadata):
 
     print("OpticalChannelReferences created.")
     return OpticalChannels, OpticalChannelRefs
+
 
 # Convert each string into a tuple of integers, handling non-numeric characters
 def parse_coordinate(coord):
@@ -610,20 +610,53 @@ def build_activity(full_path, metadata, table):
     )
 
 
+def build_activity(data_path, file_name, metadata):
+    with open(f"{data_path}\\processed\\{file_name}.json", 'r') as file:
+        json_data = json.load(file)
+
+        activity_dict = {
+            'trace_original': 'Neural traces are extracted from each ROI in each time point belonging to that neuron’s cluster. Specifically, we obtain the mean of the pixels in the ROI at that time point. This is done in both the marker and activity channels. They are then put through the following series of processing steps: Background-subtraction, using the median background per channel per time point. Deletion of neurons with too low of signal in the activity channel (mean activity lower than the background – this was not done in the SWF360 control dataset due to the presence of GFP-negative neurons in that strain), or too few ROIs corresponding to them (less than half of the total number of time points). Correction to account for laser intensity changing halfway through our recording sessions (done separately on each channel based on intensity calibration measurements taken at various values of laser power). Linear interpolation to any time point that lacked an ROI in the cluster. Division of the activity channel traces by the marker channel traces, to filter out various types of motion artifacts. These divided traces are the neural activity traces. We then compute the mean neural activity (averaged across all neurons) over the entire time range, and fit a one-parameter exponential bleaching model to it. The bleaching model was initialized such that it had value equal to the median neural activity value at the median time point, and it was fit using log-MSE error to the averaged neural activity value. A small number of datasets with very high bleaching (determined using the exponential decay parameter of the bleaching model) were excluded from all analysis. Each neural activity trace is then divided by the best-fit bleaching curve; the resulting traces are referred to as F.',
+        }
+
+        activity = []
+
+        for eachActivity in activity_dict.keys():
+            description = activity_dict[eachActivity]
+            data = json_data.get(eachActivity)
+            timestamps = json_data.get('timestamp_confocal')
+            thisActivity = BehavioralTimeSeries(name=eachActivity)
+            thisActivity.create_timeseries(name=eachActivity,
+                                           data=data,
+                                           timestamps=timestamps,
+                                           unit='')
+
+            activity += [thisActivity]
+
+        return activity
+
+
 def build_behavior(data_path, file_name, metadata):
     with open(f"{data_path}\\processed\\{file_name}.json", 'r') as file:
         json_data = json.load(file)
 
         behavior_dict = {
-            'dorsalness': {'type':'time series','description':'The dorsalness metric is computed similarly to the forwardness metric.'},
-            'head_curvature': {'type':'time series','description':'Head curvature is computed as the angle between the points 1, 5, and 8 (ie: the angle between θ→_1,5 and θ→_5,8 ). These points are 0 μm, 35.4 μm, and 61.9 μm along the worm’s spline, respectively.'},
-            'angular_velocity': {'type':'time series','description':'Angular velocity is computed as smoothed (dθ→_1,2)/(dt) , which is computed with a linear Savitzky-Golay filter with a width of 300 time points (15 seconds) centered on the current time point.'},
-            'reversal_events': {'type':'event','description':''},
-            'feedingness': {'type':'time series','description':'The feedingness metric is computed similarly to the forwardness metric.'},
-            'velocity': {'type':'time series','description':'First, we read out the (x,y) position of the stage (in mm) as it tracks the worm. To account for any delay between the worm’s motion and stage tracking, at each time point we added the distance from the center of the image (corresponding to the stage position) to the position of the metacorpus of pharynx (detected from our neural network used in tracking). This then gave us the position of the metacorpus over time. To decrease the noise level (e.g., from neural network and stage jitter), we then applied a Group-Sparse Total-Variation Denoising algorithm to the metacorpus position. Differentiating the metacorpus position then gives us a movement vector of the animal. Because this movement vector was computed from the location of the metacorpus, it contains two components of movement: the animal’s velocity in its direction of motion, and oscillations of the animal’s head perpendicular to that direction. To filter out these oscillations, we projected the movement vector onto the animal’s facing direction, i.e. the vector from the grinder of the pharynx to its metacorpus (computed from the stage-tracking neural network output). The result of this projection is a signed scalar, which is reported as the animal’s velocity.'},
-            'body_curvature': {'type':'time series','description':'Body curvature is computed as the standard deviation of θ→_(i, i+1) for i between 1 and 31 (ie: going up to 265 μm along the worm’s spline). This value was selected such that this length of the animal would almost never be cropped out of the NIR camera’s field of view. To ensure that these angles are continuous in i , they may each have 2pi added or subtracted as appropriate.'},
-            'forwardness': {'type':'time series','description':"The forwardness metric for a neuron class is computed as F_D * (σM/σD) * signal, where F_D is the deconvolved forwardness of the Cartesian average μ_cart of the hierarchical model fit to that neuron class (see “deconvolved activity matrix” and “hierarchical model” methods sections above for more details; the behavior values used in the deconvolved forwardness computation were constructed by appending together all of the behaviors for the neuron class), σD is the standard deviation of the model fit corresponding to μ_cart with s = 0, σM is the standard deviation of the model fit corresponding to μ_cart, σD, and signal is defined as in the “Statistical encoding tests” section of the related publication. This ratio is intended to correct for the fact that the model parameters need to be larger (resulting in larger deconvolved forwardness values) for the same neural response size if the neuron has a long EWMA decay."},
-            'pumping': {'type':'time series','description':'Pumping rate was manually annotated using Datavyu, by counting each pumping stroke while watching videos slowed down the 25% of their real-time speeds. The rate is then filtered via a moving average with a width of 80 time points (4 seconds) to smoothen the trace into a pumping rate rather than individual pumping strokes.'},
+            'dorsalness': {'type': 'time series',
+                           'description': 'The dorsalness metric is computed similarly to the forwardness metric.'},
+            'head_curvature': {'type': 'time series',
+                               'description': 'Head curvature is computed as the angle between the points 1, 5, and 8 (ie: the angle between θ→_1,5 and θ→_5,8 ). These points are 0 μm, 35.4 μm, and 61.9 μm along the worm’s spline, respectively.'},
+            'angular_velocity': {'type': 'time series',
+                                 'description': 'Angular velocity is computed as smoothed (dθ→_1,2)/(dt) , which is computed with a linear Savitzky-Golay filter with a width of 300 time points (15 seconds) centered on the current time point.'},
+            'reversal_events': {'type': 'event', 'description': ''},
+            'feedingness': {'type': 'time series',
+                            'description': 'The feedingness metric is computed similarly to the forwardness metric.'},
+            'velocity': {'type': 'time series',
+                         'description': 'First, we read out the (x,y) position of the stage (in mm) as it tracks the worm. To account for any delay between the worm’s motion and stage tracking, at each time point we added the distance from the center of the image (corresponding to the stage position) to the position of the metacorpus of pharynx (detected from our neural network used in tracking). This then gave us the position of the metacorpus over time. To decrease the noise level (e.g., from neural network and stage jitter), we then applied a Group-Sparse Total-Variation Denoising algorithm to the metacorpus position. Differentiating the metacorpus position then gives us a movement vector of the animal. Because this movement vector was computed from the location of the metacorpus, it contains two components of movement: the animal’s velocity in its direction of motion, and oscillations of the animal’s head perpendicular to that direction. To filter out these oscillations, we projected the movement vector onto the animal’s facing direction, i.e. the vector from the grinder of the pharynx to its metacorpus (computed from the stage-tracking neural network output). The result of this projection is a signed scalar, which is reported as the animal’s velocity.'},
+            'body_curvature': {'type': 'time series',
+                               'description': 'Body curvature is computed as the standard deviation of θ→_(i, i+1) for i between 1 and 31 (ie: going up to 265 μm along the worm’s spline). This value was selected such that this length of the animal would almost never be cropped out of the NIR camera’s field of view. To ensure that these angles are continuous in i , they may each have 2pi added or subtracted as appropriate.'},
+            'forwardness': {'type': 'time series',
+                            'description': "The forwardness metric for a neuron class is computed as F_D * (σM/σD) * signal, where F_D is the deconvolved forwardness of the Cartesian average μ_cart of the hierarchical model fit to that neuron class (see “deconvolved activity matrix” and “hierarchical model” methods sections above for more details; the behavior values used in the deconvolved forwardness computation were constructed by appending together all of the behaviors for the neuron class), σD is the standard deviation of the model fit corresponding to μ_cart with s = 0, σM is the standard deviation of the model fit corresponding to μ_cart, σD, and signal is defined as in the “Statistical encoding tests” section of the related publication. This ratio is intended to correct for the fact that the model parameters need to be larger (resulting in larger deconvolved forwardness values) for the same neural response size if the neuron has a long EWMA decay."},
+            'pumping': {'type': 'time series',
+                        'description': 'Pumping rate was manually annotated using Datavyu, by counting each pumping stroke while watching videos slowed down the 25% of their real-time speeds. The rate is then filtered via a moving average with a width of 80 time points (4 seconds) to smoothen the trace into a pumping rate rather than individual pumping strokes.'},
         }
 
         behavior = []
@@ -635,9 +668,9 @@ def build_behavior(data_path, file_name, metadata):
             if behavior_dict[eachBehavior]['type'] == 'time series':
                 thisBehavior = BehavioralTimeSeries(name=eachBehavior)
                 thisBehavior.create_timeseries(name=eachBehavior,
-                                                data=data,
-                                                timestamps=timestamps,
-                                                unit='')
+                                               data=data,
+                                               timestamps=timestamps,
+                                               unit='')
             elif behavior_dict[eachBehavior]['type'] == 'event':
                 ts = np.zeros(np.shape(timestamps))
 
@@ -648,9 +681,9 @@ def build_behavior(data_path, file_name, metadata):
 
                 thisBehavior = BehavioralEvents(name=eachBehavior)
                 thisBehavior.create_timeseries(name=eachBehavior,
-                                                data=ts,
-                                                timestamps=timestamps,
-                                                unit='')
+                                               data=ts,
+                                               timestamps=timestamps,
+                                               unit='')
             elif behavior_dict[eachBehavior]['type'] == 'coded':
                 thisBehavior = SpatialSeries(
                     name=eachBehavior,
@@ -667,7 +700,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     print("Starting to build NWB for run:", run)  # Debug print
 
     data_path = Path(file_info['path']).parent
-    file_name = f"{file_info['date']}-0{run+1}"
+    file_name = f"{file_info['date']}-0{run + 1}"
     metadata = file_info['metadata'][run]
     metadata['grid spacing'] = [0.54, 0.54, 0.54]
     metadata['grid spacing unit'] = 'um'
@@ -703,7 +736,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         print("Processing neuron ROIs...")  # Debug print
         file, header = nrrd.read(f"{data_path}/prj_neuropal/{file_name}/neuron_rois.nrrd", index_order='C')
         labels = pd.read_excel(f"{data_path}/prj_neuropal/{file_name}/{file_name} Neuron ID.xlsx")
-        #print(np.shape(file))
+        # print(np.shape(file))
         data = np.transpose(file, (2, 1, 0))
 
         vs = PlaneSegmentation(
@@ -783,15 +816,17 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     calc_imaging_volume = build_gcamp(nwb_file, data_path, OpticalChannels, OpticalChannelRefs, main_device, metadata)
 
     build_nir(nwb_file, ImagingVol, h5_path)
-    #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
+    # video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
-    #build_activity(data_path, metadata, video_center_table)
+    activity = build_activity(data_path, file_name, metadata)
 
     processed_module.add(Image)
     processed_module.add(NeuroPALImSeg)
     processed_module.add(OpticalChannelRefs)
     for eachBehavior in behavior:
         processed_module.add(eachBehavior)
+    for eachActivity in activity:
+        processed_module.add(eachActivity)
 
     # specify the file path you want to save this NWB file to
     save_path = f"{data_path}\\{file_name}.nwb"
@@ -799,6 +834,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     io.write(nwb_file)
     io.close()
     print("NWB file built and saved at:", save_path)  # Debug print
+
 
 if __name__ == "__main__":
     iterate_folders()
