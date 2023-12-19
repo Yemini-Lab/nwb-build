@@ -304,11 +304,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         imaging_volume=calc_imaging_volume,
     )
 
-    gcamp_mod = nwbfile.create_processing_module(
-        name='GCaMPVideo',
-        description='GCaMP Video'
-    )
-    gcamp_mod.add(calcium_image_series)
+    nwbfile.add_acquisition(calcium_image_series)
     nwbfile.add_imaging_plane(calc_imaging_volume)
 
     return calc_imaging_volume
@@ -336,7 +332,7 @@ def build_file(file_info):
     # Create NWBFile object
     nwbfile = NWBFile(
         session_description=file_data[0]['notes'],
-        identifier=str(file_data[0]['date']),
+        identifier=str(file_info['identifier']),
         session_start_time=file_data[0]['date'],
         lab=file_info['lab'],
         institution=file_info['institution'],
@@ -480,7 +476,7 @@ def parse_coordinate(coord):
 def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRefs):
     print("Building NeuroPAL volume...")
 
-    file, header = nrrd.read(f"{full_path}/prj_neuropal/{file_name}/NeuroPAL.nrrd", index_order='C')
+    file, header = nrrd.read(f"{full_path}/../prj_neuropal/{file_name}/NeuroPAL.nrrd", index_order='C')
 
     # Transpose the data to the order X, Y, Z, C
     data = np.transpose(file, (3, 2, 1, 0))  # Modify as needed based on your actual data shape
@@ -490,7 +486,7 @@ def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRef
         name='NeuroPALImageRaw',
         order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
         description=f"NeuroPAL volume of {metadata['metadata'][0]['subject']}.",
-        RGBW_channels=list(range(min(header['sizes']))),
+        RGBW_channels=[0,1,2,3],
         data=H5DataIO(data=data, compression=True),
         imaging_volume=ImagingVol
     )
@@ -611,7 +607,7 @@ def build_activity(full_path, metadata, table):
 
 
 def build_behavior(data_path, file_name, metadata):
-    with open(f"{data_path}\\processed\\{file_name}.json", 'r') as file:
+    with open(f"{data_path}/../processed/{file_name}.json", 'r') as file:
         json_data = json.load(file)
 
         behavior_dict = {
@@ -667,8 +663,8 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     print("Starting to build NWB for run:", run)  # Debug print
 
     data_path = Path(file_info['path']).parent
-    file_name = f"{file_info['date']}-0{run+1}"
-    metadata = file_info['metadata'][run]
+    file_name = f"{file_info['date']}-{run}"
+    metadata = file_info['metadata'][0]
     metadata['grid spacing'] = [0.54, 0.54, 0.54]
     metadata['grid spacing unit'] = 'um'
 
@@ -678,7 +674,14 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     OpticalChannels, OpticalChannelRefs = build_channels(metadata)
     behavior = build_behavior(data_path, file_name, metadata)
 
-    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}/NeuroPAL.nrrd"):
+    neuroPAL_module = nwb_file.create_processing_module(
+        name = 'NeuroPAL',
+        description = 'NeuroPAL image metadata and segmentation'
+    )
+
+    neuroPAL_module.add(OpticalChannelRefs)
+
+    if os.path.exists(f"{data_path}/../prj_neuropal/{file_name}/NeuroPAL.nrrd"):
         print("Creating ImagingVolume object for NeuroPAL...")  # Debug print
         ImagingVol = ImagingVolume(
             name='NeuroPALImVol',
@@ -696,34 +699,39 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
 
         Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
         nwb_file.add_imaging_plane(ImagingVol)
+
+        nwb_file.add_acquisition(Image)
+
     else:
         print('No NeuroPAL found.')  # Debug print
 
-    if os.path.exists(f"{data_path}/prj_neuropal/{file_name}/neuron_rois.nrrd"):
+    if os.path.exists(f"{data_path}/../prj_neuropal/{file_name}/neuron_rois.nrrd"):
         print("Processing neuron ROIs...")  # Debug print
-        file, header = nrrd.read(f"{data_path}/prj_neuropal/{file_name}/neuron_rois.nrrd", index_order='C')
-        labels = pd.read_excel(f"{data_path}/prj_neuropal/{file_name}/{file_name} Neuron ID.xlsx")
+        file, header = nrrd.read(f"{data_path}/../prj_neuropal/{file_name}/neuron_rois.nrrd", index_order='C')
+        labels = pd.read_excel(f"{data_path}/../prj_neuropal/{file_name}/{file_name} Neuron ID.xlsx")
         #print(np.shape(file))
         data = np.transpose(file, (2, 1, 0))
 
         vs = PlaneSegmentation(
             name='NeuronSegmentationROIs',
-            description='Segmentation of NeuroPAL volume. IDs found in NeuronCenters.',
+            description='Segmentation of NeuroPAL volume. IDs found in NeuroPALNeurons.',
             imaging_plane=ImagingVol,
         )
 
         vs.add_roi(image_mask=data)
 
         coord_base = PlaneSegmentation(
-            name='NeuronCenters',
+            name='NeuroPALNeurons',
             description='Centers of NeuroPAL volume.',
             imaging_plane=ImagingVol,
         )
 
-        coordinates = [parse_coordinate(coord) for coord in labels['Coordinates ']]
+        labels = labels[labels['Confidence']>=4]
+
+        coordinates = [parse_coordinate(coord) for i, coord in enumerate(labels['Coordinates '])]
 
         for neuron in coordinates:
-            coord_base.add_roi(pixel_mask=[(neuron[0], neuron[1], neuron[2])])
+            coord_base.add_roi(voxel_mask=[[neuron[0], neuron[1], neuron[2]-1,1]])
 
         roi_ids = []
         for item in list(labels['ROI ID']):
@@ -734,16 +742,16 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
                 roi_ids.append(item)
 
         coord_base.add_column(
-            name='ROI_ID_labels',
+            name='ROI_IDs',
             description='ROI ID labels from segmentation image mask.',
             data=roi_ids,
             index=False,
         )
 
         coord_base.add_column(
-            name='Neuron_Names',
+            name='ID_labels',
             description='Neuron Names',
-            data=list(labels['Class']),
+            data=list(labels['Neuron Class']),
             index=False,
         )
 
@@ -751,50 +759,32 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             name='NeuroPALSegmentation',
         )
 
-        NeuroPALImSeg.add_plane_segmentation(vs)
         NeuroPALImSeg.add_plane_segmentation(coord_base)
+        NeuroPALImSeg.add_plane_segmentation(vs)
 
-        # Create ImagingVolume object
-        ImagingVol = ImagingVolume(
-            name='NeuronSegmentation',
-            optical_channel_plus=OpticalChannels,
-            order_optical_channels=OpticalChannelRefs,
-            description='Neuron Centers & Neuron ROIs.',
-            device=main_device,
-            location=metadata['location'],
-            grid_spacing=metadata['grid spacing'],
-            grid_spacing_unit=metadata['grid spacing unit'],
-            origin_coords=[0, 0, 0],
-            origin_coords_unit=metadata['grid spacing unit'],
-            reference_frame=f"Worm {metadata['location']}"
-        )
+        neuroPAL_module.add(NeuroPALImSeg)
 
-        Image = build_colormap(data_path, file_name, ImagingVol, file_info, OpticalChannelRefs)
-        nwb_file.add_imaging_plane(ImagingVol)
         print("Neuron ROIs processed and added to NWBFile.")  # Debug print
 
     print("Creating processed module...")  # Debug print
-    processed_module = nwb_file.create_processing_module(
-        name='Processed',
-        description='Processed image data and metadata.'
+    behavior_module = nwb_file.create_processing_module(
+        name='Behavior',
+        description='Behavioral data'
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwb_file, data_path, OpticalChannels, OpticalChannelRefs, main_device, metadata)
+    #calc_imaging_volume = build_gcamp(nwb_file, data_path, OpticalChannels, OpticalChannelRefs, main_device, metadata)
 
-    build_nir(nwb_file, ImagingVol, h5_path)
+    #build_nir(nwb_file, ImagingVol, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
     #build_activity(data_path, metadata, video_center_table)
 
-    processed_module.add(Image)
-    processed_module.add(NeuroPALImSeg)
-    processed_module.add(OpticalChannelRefs)
     for eachBehavior in behavior:
-        processed_module.add(eachBehavior)
+        behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = f"{data_path}\\{file_name}.nwb"
+    save_path = f"{data_path}/../NWB_NP_Flavell/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()

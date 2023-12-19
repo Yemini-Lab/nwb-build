@@ -3,6 +3,7 @@ import re
 import h5py
 import simpleio
 import nd2reader
+from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
 
@@ -46,10 +47,9 @@ devices = {
         'manufacturer': 'Nikon'
         },
 }
-
-directory = 'C:\\Users\\Kevin\\Documents\\data'
-metadata_file = pd.read_excel(f'{directory}\\flavell_data.xlsx')
-
+data_path = '/Volumes/FlavellNP/data_raw/'
+directory = '2022-06-14-01'
+metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
 
 def conv_file(file_name, file_path, file_extension):
     print(f"Processing file: {file_name}{file_extension} in {file_path}")  # Debug print
@@ -69,27 +69,36 @@ def conv_file(file_name, file_path, file_extension):
         print("No match found in filename regex.")  # Debug print
         return
 
-    file_info['metadata'] = extract_subject_data(metadata_file, f"{file_info['date']}-{file_info['subj_no']}")
+    file_info['metadata'] = extract_subject_data(metadata_file, file_info['date'], float(file_info['subj_no']))
+    file_info['identifier'] = file_info['date'] +'-'+ str(file_info['subj_no'])
+    file_info['metadata'][0]['date'] = datetime.strptime(file_info['metadata'][0]['date'], '%Y-%m-%d')
 
     nwb_file, main_device, nir_device = simpleio.build_file(file_info)
 
-    for eachRun in tqdm(range(len(file_info['metadata'].keys())), desc="Building NWB"):
-        simpleio.build_nwb(nwb_file, file_info, eachRun, main_device, nir_device)
-        file_info['x'] = nd2reader.ND2Reader(file_info['path']).metadata['width']
-        file_info['y'] = nd2reader.ND2Reader(file_info['path']).metadata['height']
-        file_info['num_frames'] = nd2reader.ND2Reader(file_info['path']).metadata['num_frames']
-        file_info['c'] = len(nd2reader.ND2Reader(file_info['path']).metadata['channels'])
+    simpleio.build_nwb(nwb_file, file_info, file_info['subj_no'], main_device, nir_device)
+    file_info['x'] = nd2reader.ND2Reader(file_info['path']).metadata['width']
+    file_info['y'] = nd2reader.ND2Reader(file_info['path']).metadata['height']
+    file_info['num_frames'] = nd2reader.ND2Reader(file_info['path']).metadata['num_frames']
+    file_info['c'] = len(nd2reader.ND2Reader(file_info['path']).metadata['channels'])
 
     print(f"Completed processing for {file_name}{file_extension}")  # Debug print
 
 
-def extract_subject_data(df, subject_name):
-    subject_data = df[df['subject'] == subject_name]
+def extract_subject_data(df, date, run):
+    df = df[df['date'] == date]
+    animal = df.loc[df['run'] == run, 'animal'].values[0]
+    subject_data = df[df['animal'] == animal]
+    subject_data = subject_data.reset_index()
     result = {}
     for index, row in subject_data.iterrows():
         result[index] = row.to_dict()
     return result
 
+def process_file(directory):
+    file_name = directory
+    file_extension = '.nd2'
+    full_path = data_path + directory + '/' +file_name +file_extension
+    conv_file(file_name, full_path, file_extension)
 
 def process_directory(directory):
     entries = os.listdir(directory)
@@ -100,5 +109,14 @@ def process_directory(directory):
             if file_extension == '.nd2':
                 conv_file(file_name, full_path, file_extension)
 
+for folder in tqdm(os.listdir(data_path)):
+    if folder[0:2]!= '20':
+        continue
 
-process_directory(directory)
+    if folder in ['2023-01-19-01', '2023-01-06-15']:
+        continue
+    #if os.path.exists(data_path + 'NWB_NP_flavell/'+folder + '.nwb'):
+    #    continue
+    print(folder)
+    process_file(folder)
+#process_directory(directory)
