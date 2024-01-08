@@ -48,7 +48,9 @@ devices = {
         },
 }
 data_path = '/Volumes/FlavellNP/data_raw/'
+#data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
 directory = '2022-06-14-01'
+#metadata_file = pd.read_excel('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data.xlsx')
 metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
 
 def conv_file(file_name, file_path, file_extension):
@@ -68,6 +70,8 @@ def conv_file(file_name, file_path, file_extension):
     else:
         print("No match found in filename regex.")  # Debug print
         return
+    
+    print(file_info['subj_no'])
 
     file_info['metadata'] = extract_subject_data(metadata_file, file_info['date'], float(file_info['subj_no']))
     file_info['identifier'] = file_info['date'] +'-'+ str(file_info['subj_no'])
@@ -108,6 +112,8 @@ def process_directory(directory):
             file_name, file_extension = os.path.splitext(entry)
             if file_extension == '.nd2':
                 conv_file(file_name, full_path, file_extension)
+
+#process_file(directory)
 
 for folder in tqdm(os.listdir(data_path)):
     if folder[0:2]!= '20':
