@@ -47,11 +47,13 @@ devices = {
         'manufacturer': 'Nikon'
         },
 }
-data_path = '/Volumes/FlavellNP/data_raw/'
+#data_path = '/Volumes/FlavellNP/data_raw/'
+data_path = '/mnt/Flavell/data_raw'
 #data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
 directory = '2022-06-14-01'
 #metadata_file = pd.read_excel('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data.xlsx')
-metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
+#metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
+metadata_file = pd.read_excel('/mnt/Flavell/data_raw/flavell_data.xlsx')
 
 def conv_file(file_name, file_path, file_extension):
     print(f"Processing file: {file_name}{file_extension} in {file_path}")  # Debug print
