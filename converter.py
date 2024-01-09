@@ -6,6 +6,7 @@ import nd2reader
 from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
+import time
 
 # Additional import for tqdm
 from tqdm import tqdm
@@ -47,13 +48,14 @@ devices = {
         'manufacturer': 'Nikon'
         },
 }
-#data_path = '/Volumes/FlavellNP/data_raw/'
-data_path = '/mnt/Flavell/data_raw'
+data_path = '/Volumes/FlavellNP/data_raw/'
+#data_path = '/mnt/flavell/data_raw/'
 #data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
 directory = '2022-06-14-01'
 #metadata_file = pd.read_excel('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data.xlsx')
 #metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
-metadata_file = pd.read_excel('/mnt/Flavell/data_raw/flavell_data.xlsx')
+#metadata_file = pd.read_csv('/home/jackbo/NWB-conversion/flavell_data.csv')
+metadata_file = pd.read_csv('/Volumes/FlavellNP/data_raw/flavell_data.csv')
 
 def conv_file(file_name, file_path, file_extension):
     print(f"Processing file: {file_name}{file_extension} in {file_path}")  # Debug print
@@ -73,9 +75,8 @@ def conv_file(file_name, file_path, file_extension):
         print("No match found in filename regex.")  # Debug print
         return
     
-    print(file_info['subj_no'])
 
-    file_info['metadata'] = extract_subject_data(metadata_file, file_info['date'], float(file_info['subj_no']))
+    file_info['metadata'] = extract_subject_data(metadata_file, file_info['date'], int(file_info['subj_no']))
     file_info['identifier'] = file_info['date'] +'-'+ str(file_info['subj_no'])
     file_info['metadata'][0]['date'] = datetime.strptime(file_info['metadata'][0]['date'], '%Y-%m-%d')
 
@@ -91,8 +92,10 @@ def conv_file(file_name, file_path, file_extension):
 
 
 def extract_subject_data(df, date, run):
+    run = str(run)
     df = df[df['date'] == date]
     animal = df.loc[df['run'] == run, 'animal'].values[0]
+  
     subject_data = df[df['animal'] == animal]
     subject_data = subject_data.reset_index()
     result = {}
@@ -115,7 +118,6 @@ def process_directory(directory):
             if file_extension == '.nd2':
                 conv_file(file_name, full_path, file_extension)
 
-#process_file(directory)
 
 for folder in tqdm(os.listdir(data_path)):
     if folder[0:2]!= '20':
@@ -126,5 +128,9 @@ for folder in tqdm(os.listdir(data_path)):
     #if os.path.exists(data_path + 'NWB_NP_flavell/'+folder + '.nwb'):
     #    continue
     print(folder)
+    t1 = time.time()
     process_file(folder)
+    t2 = time.time()
+    print(str(t2-t1))
+
 #process_directory(directory)

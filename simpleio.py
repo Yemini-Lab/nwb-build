@@ -304,7 +304,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         imaging_volume=calc_imaging_volume,
     )
 
-    nwbfile.add_acquisition(calcium_image_series)
+    #nwbfile.add_acquisition(calcium_image_series)
     nwbfile.add_imaging_plane(calc_imaging_volume)
 
     return calc_imaging_volume
@@ -692,8 +692,8 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     file_name = f"{file_info['date']}-{run}"
     metadata = file_info['metadata'][0]
     subject = metadata['subject']
-    if subject[-2] == '-':
-        metadata['subject'] = metadata['subject'][:-1] + '0' + metadata['subject'][-1]
+    #if subject[-2] == '-':
+    #    metadata['subject'] = metadata['subject'][:-1] + '0' + metadata['subject'][-1]
     metadata['grid spacing'] = [0.54, 0.54, 0.54]
     metadata['grid spacing unit'] = 'um'
 
@@ -709,6 +709,8 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     )
 
     neuroPAL_module.add(OpticalChannelRefs)
+    
+    print(metadata['location'])
 
     if os.path.exists(f"{data_path}/../prj_neuropal/{file_name}/NeuroPAL.nrrd"):
         print("Creating ImagingVolume object for NeuroPAL...")  # Debug print
@@ -779,15 +781,15 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
 
         for num, neuron in neurons.items():
             confidence = neuron['confidence']
-            ID = neuron['label']
-            coordinates = parse_coordinate(np.asarray(labels[labels['Class']==ID]['Coordinates '])[0])
-            roi_id = neuron['roi_id'][0]
-
             if confidence>=4:
+                ID = neuron['label']
+                coordinates = parse_coordinate(np.asarray(labels[labels['Class']==ID]['Coordinates '])[0])
+                roi_id = neuron['roi_id'][0]
                 coord_base.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
                 calc_coords.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
                 roi_ids.append(roi_id)
                 IDs.append(ID)
+
 
         coord_base.add_column(
             name='ROI_IDs',
@@ -840,7 +842,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         description='Behavioral data'
     )
 
-    build_nir(nwb_file, ImagingVol, h5_path)
+    #build_nir(nwb_file, ImagingVol, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
     signal_roi, signal_fluor = build_activity(data_path, file_name, calc_imaging_volume, calc_coords, metadata)
