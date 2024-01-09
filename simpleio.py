@@ -878,8 +878,8 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    #save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
-    save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
+    save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
+    #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()
