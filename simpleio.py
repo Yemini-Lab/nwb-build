@@ -304,7 +304,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         imaging_volume=calc_imaging_volume,
     )
 
-    #nwbfile.add_acquisition(calcium_image_series)
+    nwbfile.add_acquisition(calcium_image_series)
     nwbfile.add_imaging_plane(calc_imaging_volume)
 
     return calc_imaging_volume
@@ -842,7 +842,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         description='Behavioral data'
     )
 
-    #build_nir(nwb_file, ImagingVol, h5_path)
+    build_nir(nwb_file, ImagingVol, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
     signal_roi, signal_fluor = build_activity(data_path, file_name, calc_imaging_volume, calc_coords, metadata)
