@@ -52,7 +52,7 @@ devices = {
 data_path = '/mnt/flavell/data_raw/'
 #data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
 directory = '2022-06-14-01'
-#metadata_file = pd.read_excel('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data.xlsx')
+#metadata_file = pd.read_csv('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data_new.csv')
 #metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
 #metadata_file = pd.read_csv('/home/jackbo/NWB-conversion/flavell_data.csv')
 metadata_file = pd.read_csv('/mnt/flavell/data_raw/flavell_data.csv')
@@ -134,4 +134,4 @@ for folder in tqdm(os.listdir(data_path)):
     t2 = time.time()
     print(str(t2-t1))
 
-#process_directory(directory)
+#process_file(directory)

@@ -19,7 +19,7 @@ from dateutil import tz
 from hdmf.backends.hdf5.h5_utils import H5DataIO
 from hdmf.data_utils import DataChunkIterator
 from ndx_multichannel_volume import CElegansSubject, OpticalChannelReferences, OpticalChannelPlus, ImagingVolume, \
-    MultiChannelVolume, MultiChannelVolumeSeries
+    MultiChannelVolume, MultiChannelVolumeSeries, SegmentationLabels
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.behavior import SpatialSeries, Position, BehavioralTimeSeries, BehavioralEvents
 from pynwb.ophys import ImageSegmentation, PlaneSegmentation, \
@@ -470,6 +470,8 @@ def build_channels(metadata):
 def parse_coordinate(coord):
     # Replace non-numeric characters (except commas) with an empty string
     cleaned = ''.join(c if c.isdigit() or c == ',' or c=='.' else '' for c in coord)
+    if len(cleaned) < 5:
+        return None
     return tuple(map(int, cleaned.split(',')))
 
 
@@ -586,12 +588,7 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
     return video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg
 
 
-def build_activity(data_path, file_name, calc_imaging_volume, calc_volseg, metadata):
-
-    rt_region = calc_volseg.create_roi_table_region(
-        description = 'Segmented neurons associated with calcium image series',
-        region = list(np.arange(calc_volseg.voxel_mask.shape[0]))
-    )
+def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata):
 
     nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{data_path}/{metadata['subject']}.nd2"))
     #h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
@@ -600,25 +597,58 @@ def build_activity(data_path, file_name, calc_imaging_volume, calc_volseg, metad
     scan_rate = 1/scan_rate
     ai_sampling_rate = 1.7
 
-    num_neurons = calc_volseg.voxel_mask.shape[0]
-
     with open(f"{data_path}/../processed/{file_name}.json", 'r') as file:
         json_data = json.load(file)
         gcamp_data = json_data.get('trace_original')
         neurons = json_data.get('labeled')
 
-        gcamp_keep = np.zeros((num_neurons, len(gcamp_data[0])))
-        i=0
-        for num, neuron in neurons.items():
-            if neuron['confidence']>=4:
-                gcamp_keep[i] = gcamp_data[int(num)-1]
-                i+=1
+        calc_labels = ['']*len(gcamp_data[0])
+
+        calc_coords = PlaneSegmentation(
+            name = 'Aligned_neuron_coordinates',
+            description = 'Neuron center coordinates in aligned space',
+            imaging_plane = calc_imaging_volume 
+        )
+
+        CalcImSeg = ImageSegmentation(
+            name = 'CalciumSeriesSegmentation',
+        )
+
+        CalcImSeg.add_plane_segmentation(calc_coords)
+
+        for i in range(len(calc_labels)):
+            if str(i+1) in neurons.keys():
+                calc_labels[i] = neurons[str(i+1)]['label']
+                coordinates = parse_coordinate(np.asarray(labels[labels['Class']==neurons[str(i+1)]['label']]['Coordinates '])[0])
+                calc_coords.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
+
+            else:
+                calc_coords.add_roi(voxel_mask=[[0,0,0,0]])
+
+        calc_coords.add_column(
+            name='ID_labels',
+            description='Neuron Names',
+            data=calc_labels,
+            index=False,
+        )
+
+        CalcLabels = SegmentationLabels(
+            name = 'NeuronIDs',
+            labels = calc_labels,
+            description = 'Calcium ROI segmentation labels',
+            ImageSegmentation = CalcImSeg
+        )
+
+        rt_region = calc_coords.create_roi_table_region(
+        description = 'Segmented neurons associated with calcium image series',
+        region = list(np.arange(calc_coords.voxel_mask.shape[0]))
+        )
 
         timestamps = np.linspace(0, len(gcamp_data) / ai_sampling_rate, len(gcamp_data))
         SignalRoiResponse = RoiResponseSeries(
             name='SignalCalciumImResponseSeries',
             description = 'Raw calcium fluorescence activity',
-            data=gcamp_keep,
+            data=gcamp_data,
             rois=rt_region,
             unit='lumens',
             timestamps=timestamps
@@ -629,7 +659,7 @@ def build_activity(data_path, file_name, calc_imaging_volume, calc_volseg, metad
             roi_response_series=SignalRoiResponse,
         )
 
-    return SignalRoiResponse, SignalFluor
+    return SignalRoiResponse, SignalFluor, CalcLabels, calc_coords, CalcImSeg
 
 
 def build_behavior(data_path, file_name, metadata):
@@ -770,12 +800,6 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             imaging_plane=ImagingVol,
         )
 
-        calc_coords = PlaneSegmentation(
-            name = 'Aligned_neuron_coordinates',
-            description = 'Neuron center coordinates in aligned space',
-            imaging_plane = calc_imaging_volume 
-        )
-
         roi_ids = []
         IDs = []
 
@@ -784,12 +808,23 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             if confidence>=4:
                 ID = neuron['label']
                 coordinates = parse_coordinate(np.asarray(labels[labels['Class']==ID]['Coordinates '])[0])
+                if coordinates is None:
+                    continue
                 roi_id = neuron['roi_id'][0]
                 coord_base.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
-                calc_coords.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
                 roi_ids.append(roi_id)
                 IDs.append(ID)
 
+            else:
+                ID = neuron['label']
+                coordinates = parse_coordinate(np.asarray(labels[labels['Class']==ID]['Coordinates '])[0])
+                if coordinates is None:
+                    continue 
+                roi_id = neuron['roi_id'][0]
+                coord_base.add_roi(voxel_mask=[[coordinates[0], coordinates[1], coordinates[2]-1,1]])
+                roi_ids.append(roi_id)
+                IDs.append('')
+
 
         coord_base.add_column(
             name='ROI_IDs',
@@ -798,21 +833,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             index=False,
         )
 
-        calc_coords.add_column(
-            name='ROI_IDs',
-            description='ROI ID labels from segmentation image mask.',
-            data=roi_ids,
-            index=False,
-        )
-
         coord_base.add_column(
-            name='ID_labels',
-            description='Neuron Names',
-            data=IDs,
-            index=False,
-        )
-
-        calc_coords.add_column(
             name='ID_labels',
             description='Neuron Names',
             data=IDs,
@@ -823,16 +844,10 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             name='NeuroPALSegmentation',
         )
 
-        CalcImSeg = ImageSegmentation(
-            name = 'CalciumSeriesSegmentation',
-        )
-
         NeuroPALImSeg.add_plane_segmentation(coord_base)
         NeuroPALImSeg.add_plane_segmentation(vs)
-        CalcImSeg.add_plane_segmentation(calc_coords)
 
         neuroPAL_module.add(NeuroPALImSeg)
-        ophys.add(CalcImSeg)
 
         print("Neuron ROIs processed and added to NWBFile.")  # Debug print
 
@@ -845,16 +860,19 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     build_nir(nwb_file, ImagingVol, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
-    signal_roi, signal_fluor = build_activity(data_path, file_name, calc_imaging_volume, calc_coords, metadata)
+    signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name, calc_imaging_volume , labels, metadata)
 
+    ophys.add(calc_imseg)
     ophys.add(signal_roi)
     ophys.add(signal_fluor)
+    ophys.add(calc_labels)
 
     for eachBehavior in behavior:
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
     save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
+    #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()
