@@ -220,7 +220,7 @@ def iter_calc_h5(file_path):
 
 
 # Build bright field NIR
-def build_nir(nwbfile, ImagingVol, video_path):
+def build_nir(nwbfile, timestamps,ImagingVol, video_path):
     with h5py.File(video_path, 'r') as hdf:
         data = hdf['img_nir'][:]
 
@@ -240,7 +240,8 @@ def build_nir(nwbfile, ImagingVol, video_path):
                     'BFS-U3-28S5M-C, FLIR).',
         data=hefty_data,
         unit='',
-        timestamps=list(range(hefty_data.shape[0])),
+        timestamps= timestamps,
+        #timestamps=list(range(hefty_data.shape[0])),
     )
 
     nir_module = nwbfile.create_processing_module(
@@ -304,7 +305,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         imaging_volume=calc_imaging_volume,
     )
 
-    nwbfile.add_acquisition(calcium_image_series)
+    #nwbfile.add_acquisition(calcium_image_series)
     nwbfile.add_imaging_plane(calc_imaging_volume)
 
     return calc_imaging_volume
@@ -349,8 +350,8 @@ def build_file(file_info):
         growth_stage_time=str(np.nan),
         cultivation_temp=float(file_info['cultivation_temp'][:-1]),
         description=file_data[0]['notes'],
-        species="C. Elegans",
-        sex=file_data[0]['sex'],
+        species="http://purl.obolibrary.org/obo/NCBITaxon_6239",
+        sex="O",
         strain=file_data[0]['strain']
     )
     print("CElegansSubject object added to NWBFile.")  # Debug print
@@ -686,10 +687,16 @@ def build_behavior(data_path, file_name, metadata):
             timestamps = json_data.get('timestamp_confocal')
             if behavior_dict[eachBehavior]['type'] == 'time series':
                 thisBehavior = BehavioralTimeSeries(name=eachBehavior)
-                thisBehavior.create_timeseries(name=eachBehavior,
-                                                data=data,
-                                                timestamps=timestamps,
-                                                unit='')
+                if eachBehavior in ['dorsalness', 'feedingness', 'forwardness']:
+                    thisBehavior.create_timeseries(name=eachBehavior,
+                                                    data=data,
+                                                    timestamps=np.arange(len(data)),
+                                                    unit='')
+                else:
+                    thisBehavior.create_timeseries(name=eachBehavior,
+                                                    data=data,
+                                                    timestamps=timestamps,
+                                                    unit='')
             elif behavior_dict[eachBehavior]['type'] == 'event':
                 ts = np.zeros(np.shape(timestamps))
 
@@ -712,7 +719,7 @@ def build_behavior(data_path, file_name, metadata):
 
             behavior += [thisBehavior]
 
-        return behavior
+        return behavior, timestamps
 
 
 def build_nwb(nwb_file, file_info, run, main_device, nir_device):
@@ -731,7 +738,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
     h5_path = f"{data_path}/{file_name}.h5"
 
     OpticalChannels, OpticalChannelRefs = build_channels(metadata)
-    behavior = build_behavior(data_path, file_name, metadata)
+    behavior, timestamps = build_behavior(data_path, file_name, metadata)
 
     neuroPAL_module = nwb_file.create_processing_module(
         name = 'NeuroPAL',
@@ -857,7 +864,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         description='Behavioral data'
     )
 
-    build_nir(nwb_file, ImagingVol, h5_path)
+    #build_nir(nwb_file, timestamps, ImagingVol, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
     signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name, calc_imaging_volume , labels, metadata)
@@ -871,8 +878,8 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
-    #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
+    #save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
+    save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()

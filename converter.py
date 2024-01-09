@@ -49,13 +49,13 @@ devices = {
         },
 }
 #data_path = '/Volumes/FlavellNP/data_raw/'
-data_path = '/mnt/flavell/data_raw/'
-#data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
+#data_path = '/mnt/flavell/data_raw/'
+data_path = '/Users/danielysprague/foco_lab/data/Flavell_example/'
 directory = '2022-06-14-01'
-#metadata_file = pd.read_csv('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data_new.csv')
+metadata_file = pd.read_csv('/Users/danielysprague/foco_lab/data/Flavell_example/flavell_data_new.csv')
 #metadata_file = pd.read_excel('/Volumes/FlavellNP/data_raw/flavell_data.xlsx')
 #metadata_file = pd.read_csv('/home/jackbo/NWB-conversion/flavell_data.csv')
-metadata_file = pd.read_csv('/mnt/flavell/data_raw/flavell_data.csv')
+#metadata_file = pd.read_csv('/mnt/flavell/data_raw/flavell_data.csv')
 #metadata_file = pd.read_csv('/Volumes/FlavellNP/data_raw/flavell_data.csv')
 
 def conv_file(file_name, file_path, file_extension):
@@ -119,7 +119,7 @@ def process_directory(directory):
             if file_extension == '.nd2':
                 conv_file(file_name, full_path, file_extension)
 
-
+'''
 for folder in tqdm(os.listdir(data_path)):
     if folder[0:2]!= '20':
         continue
@@ -133,5 +133,5 @@ for folder in tqdm(os.listdir(data_path)):
     process_file(folder)
     t2 = time.time()
     print(str(t2-t1))
-
-#process_file(directory)
+'''
+process_file(directory)
