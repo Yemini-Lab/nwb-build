@@ -220,9 +220,10 @@ def iter_calc_h5(file_path):
 
 
 # Build bright field NIR
-def build_nir(nwbfile, timestamps,ImagingVol, video_path):
+def build_nir(nwbfile, video_path):
     with h5py.File(video_path, 'r') as hdf:
         data = hdf['img_nir'][:]
+        timestamps = hdf['img_metadata']['img_timestamp'][:]
 
     nir_data = np.array(data)
     nir_data = np.transpose(data, axes=(0, 2, 1))  # Shape should be (T, X, Y)
@@ -240,7 +241,7 @@ def build_nir(nwbfile, timestamps,ImagingVol, video_path):
                     'BFS-U3-28S5M-C, FLIR).',
         data=hefty_data,
         unit='',
-        timestamps= timestamps,
+        timestamps= timestamps[::2],
         #timestamps=list(range(hefty_data.shape[0])),
     )
 
@@ -866,7 +867,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         description='Behavioral data'
     )
 
-    build_nir(nwb_file, timestamps, ImagingVol, h5_path)
+    build_nir(nwb_file, h5_path)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
     signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name, calc_imaging_volume , labels, metadata)
