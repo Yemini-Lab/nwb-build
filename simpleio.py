@@ -296,7 +296,7 @@ def build_gcamp(nwbfile, full_path, OptChannels, OpticalChannelRefs, device, met
         name="CalciumImageSeries",
         description="GCaMP6s series images. Dimensions should be (t, x, y, z, C).",
         comments="",
-        data=data,
+        data=wrapped_data,
         device=device,
         unit=metadata['grid spacing unit'],
         scan_line_rate=scan_rate,
@@ -691,11 +691,13 @@ def build_behavior(data_path, file_name, metadata):
                 if eachBehavior in ['dorsalness', 'feedingness', 'forwardness']:
                     thisBehavior.create_timeseries(name=eachBehavior,
                                                     data=data,
+                                                    description = behavior_dict[eachBehavior]['description'],
                                                     timestamps=np.arange(len(data)),
                                                     unit='')
                 else:
                     thisBehavior.create_timeseries(name=eachBehavior,
                                                     data=data,
+                                                    description = behavior_dict[eachBehavior]['description'],
                                                     timestamps=timestamps,
                                                     unit='')
             elif behavior_dict[eachBehavior]['type'] == 'event':
@@ -709,6 +711,7 @@ def build_behavior(data_path, file_name, metadata):
                 thisBehavior = BehavioralEvents(name=eachBehavior)
                 thisBehavior.create_timeseries(name=eachBehavior,
                                                 data=ts,
+                                                description = behavior_dict[eachBehavior]['description'],
                                                 timestamps=timestamps,
                                                 unit='')
             elif behavior_dict[eachBehavior]['type'] == 'coded':
