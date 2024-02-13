@@ -461,7 +461,7 @@ def build_channels(metadata):
 
     # Create OpticalChannelReferences object
     OpticalChannelRefs = OpticalChannelReferences(
-        name='OpticalChannelRefs',
+        name='order_optical_channels',
         channels=OptChanRefData
     )
 
@@ -488,7 +488,6 @@ def build_colormap(full_path, file_name, ImagingVol, metadata, OpticalChannelRef
     # Create MultiChannelVolume object
     Image = MultiChannelVolume(
         name='NeuroPALImageRaw',
-        order_optical_channels=OpticalChannelRefs,  # Assuming this is defined earlier
         description=f"NeuroPAL volume of {metadata['metadata'][0]['subject']}.",
         RGBW_channels=[0,1,2,3],
         data=H5DataIO(data=data, compression=True),
@@ -748,8 +747,6 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         name = 'NeuroPAL',
         description = 'NeuroPAL image metadata and segmentation'
     )
-
-    neuroPAL_module.add(OpticalChannelRefs)
     
     print(metadata['location'])
 
@@ -884,7 +881,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = f"{data_path}/../../NWB_flavell/{file_name}.nwb"
+    save_path = f"{data_path}/../../NWB_flavell_test/{file_name}.nwb"
     #save_path = f"{data_path}/../../NWB_NP_flavell/{file_name}.nwb"
     #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
