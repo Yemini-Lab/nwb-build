@@ -177,7 +177,6 @@ def h5_memory_mapper(nd2_file, output_file):
         return
 
     shape = nd2_file.sizes
-    print(shape)
     h5_file = h5py.File(output_file, 'w')
     shape = (shape['t'], shape['c'], 1, shape['y'], shape['x'])
     h5_file.create_dataset('dataset', shape, dtype='uint16')
@@ -220,10 +219,14 @@ def iter_calc_h5(file_path):
 
 
 # Build bright field NIR
-def build_nir(nwbfile, video_path):
+def build_nir(nwbfile, video_path, behavior_timestamps):
     with h5py.File(video_path, 'r') as hdf:
         data = hdf['img_nir'][:]
         timestamps = hdf['img_metadata']['img_timestamp'][:]
+
+    decimal_location = str(behavior_timestamps[0]).index('.')
+
+    timestamps = np.asarray([float(str(time)[0:decimal_location]+'.'+str(time)[decimal_location:]) for time in timestamps])
 
     nir_data = np.array(data)
     nir_data = np.transpose(data, axes=(0, 2, 1))  # Shape should be (T, X, Y)
@@ -589,7 +592,7 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
     return video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg
 
 
-def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata):
+def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, timestamps):
 
     nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{data_path}/{metadata['subject']}.nd2"))
     #h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
@@ -645,7 +648,7 @@ def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata):
         region = list(np.arange(calc_coords.voxel_mask.shape[0]))
         )
 
-        timestamps = np.linspace(0, len(gcamp_data) / ai_sampling_rate, len(gcamp_data))
+        #timestamps = np.linspace(0, len(gcamp_data) / ai_sampling_rate, len(gcamp_data))
         SignalRoiResponse = RoiResponseSeries(
             name='SignalCalciumImResponseSeries',
             description = 'Raw calcium fluorescence activity',
@@ -867,10 +870,10 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         description='Behavioral data'
     )
 
-    build_nir(nwb_file, h5_path)
+    build_nir(nwb_file, h5_path, timestamps)
     #video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
-    signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name, calc_imaging_volume , labels, metadata)
+    signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name, calc_imaging_volume , labels, metadata, timestamps)
 
     ophys.add(calc_imseg)
     ophys.add(signal_roi)
@@ -881,7 +884,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = f"{data_path}/../../NWB_flavell_test/{file_name}.nwb"
+    save_path = f"{data_path}/../../NWB_flavell_final_2024_03_08/{file_name}.nwb"
     #save_path = f"{data_path}/../../NWB_NP_flavell/{file_name}.nwb"
     #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')

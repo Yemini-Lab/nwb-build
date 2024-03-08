@@ -119,7 +119,7 @@ def process_directory(directory):
             if file_extension == '.nd2':
                 conv_file(file_name, full_path, file_extension)
 
-'''
+
 for folder in tqdm(os.listdir(data_path)):
     if folder[0:2]!= '20':
         continue
@@ -133,5 +133,5 @@ for folder in tqdm(os.listdir(data_path)):
     process_file(folder)
     t2 = time.time()
     print(str(t2-t1))
-'''
-process_file(directory)
+
+#process_file(directory)
