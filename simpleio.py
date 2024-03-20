@@ -536,7 +536,7 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
             name='colormap_ID_labels',
             description='ID labels corresponding to neuron centers in colormap.',
             data=colormap_labels,
-            index=True
+            index=False
         )
         colormap_center_table = colormap_center_plane.create_roi_table_region(
             name='ROITableCentersColormap',
@@ -578,7 +578,7 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
             name='video_ID_labels',
             description='ID labels corresponding to neuron centers in video.',
             data=video_labels,
-            index=True
+            index=False
         )
     video_center_table = video_center_plane.create_roi_table_region(
         name='ROITableCentersVideo',
@@ -634,7 +634,7 @@ def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, 
             name='ID_labels',
             description='Neuron Names',
             data=calc_labels,
-            index=True,
+            index=False,
         )
 
         CalcLabels = SegmentationLabels(
@@ -844,14 +844,14 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             name='ROI_IDs',
             description='ROI ID labels from segmentation image mask.',
             data=roi_ids,
-            index=True,
+            index=False,
         )
 
         coord_base.add_column(
             name='ID_labels',
             description='Neuron Names',
             data=IDs,
-            index=True,
+            index=False,
         )
 
         NeuroPALImSeg = ImageSegmentation(
