@@ -198,12 +198,13 @@ def h5_memory_mapper(nd2_file, output_file):
 def iter_calc_h5(file_path):
     nd2_file = nd2reader.ND2Reader(file_path)
     f_shape = (nd2_file.sizes['t'], nd2_file.sizes['c'], 1, nd2_file.sizes['y'], nd2_file.sizes['x'])
-    for i in tqdm(range(f_shape[0]), desc="Processing time points"):
-        tpoint = np.zeros((nd2_file.sizes['y'], nd2_file.sizes['x'], 1, nd2_file.sizes['c']), dtype='uint16')
-        tpoint[:, :, 0, 0] = nd2_file.get_frame_2D(t=i, c=0)
-        tpoint[:, :, 0, 1] = nd2_file.get_frame_2D(t=i, c=1)
+    for i in tqdm(range(int(f_shape[0]/80)), desc="Processing time points"):
+        tpoint = np.zeros((nd2_file.sizes['y'], nd2_file.sizes['x'], 80, nd2_file.sizes['c']), dtype='uint16')
+        for j in range(80):
+            tpoint[:,:,j,0] = nd2_file.get_frame_2D(t=i*80+j, c=0)
+            tpoint[:,:,j,1] = nd2_file.get_frame_2D(t=i*80+j, c=1)
 
-        yield np.squeeze(tpoint)
+        yield np.squeeze(np.transpose(tpoint, [1,0,2,3]))
 
     """
     with h5py.File(filename, 'r') as h5_file:
@@ -633,7 +634,7 @@ def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, 
             name='ID_labels',
             description='Neuron Names',
             data=calc_labels,
-            index=False,
+            index=True,
         )
 
         CalcLabels = SegmentationLabels(
@@ -843,14 +844,14 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
             name='ROI_IDs',
             description='ROI ID labels from segmentation image mask.',
             data=roi_ids,
-            index=False,
+            index=True,
         )
 
         coord_base.add_column(
             name='ID_labels',
             description='Neuron Names',
             data=IDs,
-            index=False,
+            index=True,
         )
 
         NeuroPALImSeg = ImageSegmentation(
@@ -884,7 +885,7 @@ def build_nwb(nwb_file, file_info, run, main_device, nir_device):
         behavior_module.add(eachBehavior)
 
     # specify the file path you want to save this NWB file to
-    save_path = f"{data_path}/../../NWB_flavell_final_2024_03_08/{file_name}.nwb"
+    save_path = f"{data_path}/../../NWB_flavell_test/{file_name}.nwb"
     #save_path = f"{data_path}/../../NWB_NP_flavell/{file_name}.nwb"
     #save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
