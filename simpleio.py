@@ -1,4 +1,4 @@
-import scipy.io
+import scipy.io as sio
 import configparser
 import datetime
 import gc
@@ -331,40 +331,36 @@ def build_devices(nwbfile, metadata):
     return main_device, nir_device
 
 
-def build_file(file_info):
-    print("Starting to build NWBFile object...")  # Debug print
-    file_data = file_info['metadata']
+def build_file(package):
 
-    # Create NWBFile object
+    print("- Building NWBFile object...")
     nwbfile = NWBFile(
-        session_description=file_data[0]['notes'],
-        identifier=str(file_info['identifier']),
-        session_start_time=file_data[0]['date'],
-        lab=file_info['lab'],
-        institution=file_info['institution'],
-        related_publications=file_info['related_publications']
+        session_description=package['metadata']['description'],
+        identifier=package['metadata']['identifier'],
+        session_start_time=package['metadata']['date'],
+        lab=package['metadata']['lab'],
+        institution=package['metadata']['institution'],
+        related_publications=package['metadata']['related_publications']
     )
-    print("NWBFile object created.")  # Debug print
+    print("- NWBFile object created.")
 
-    print("Creating CElegansSubject object...")  # Debug print
-    # Create CElegansSubject object and add to NWBFile
+    print("- Creating CElegansSubject...")
     nwbfile.subject = CElegansSubject(
-        subject_id=f"{file_data[0]['subject']}-{file_data[0]['strain']}",
-        date_of_birth=file_data[0]['date'],
-        growth_stage=file_data[0]['age'],
+        subject_id=package['metadata']['identifier'],
+        date_of_birth=package['metadata']['date'],
+        growth_stage=package['metadata']['age'],
         growth_stage_time=str(np.nan),
-        cultivation_temp=float(file_info['cultivation_temp'][:-1]),
-        description=file_data[0]['notes'],
+        cultivation_temp=float(package['metadata']['cultivation_temp'][:-1]),
+        description=package['metadata']['notes'],
         species="http://purl.obolibrary.org/obo/NCBITaxon_6239",
-        sex="O",
-        strain=file_data[0]['strain']
+        sex=package['metadata']['sex'],
+        strain=package['metadata']['strain']
     )
-    print("CElegansSubject object added to NWBFile.")  # Debug print
+    print("- CElegansSubject object added to NWBFile.")
 
-    print("Extracting device info and building device objects...")  # Debug print
-    # Extract device info & build device objects
-    main_device, nir_device = build_devices(nwbfile, file_info)
-    print("Device objects built and added to NWBFile.")  # Debug print
+    print("Extracting device info and building device objects...")
+    main_device, nir_device = build_devices(nwbfile, package)
+    print("Device objects built and added to NWBFile.")
 
     return nwbfile, main_device, nir_device
 
