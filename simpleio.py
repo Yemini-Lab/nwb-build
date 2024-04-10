@@ -197,84 +197,23 @@ def h5_memory_mapper(nd2_file, output_file):
 
 
 def iter_calc_h5(file_path):
-    nd2_file = nd2reader.ND2Reader(file_path)
-    f_shape = (nd2_file.sizes['t'], nd2_file.sizes['c'], 1, nd2_file.sizes['y'], nd2_file.sizes['x'])
-    for i in tqdm(range(int(f_shape[0] / 80)), desc="Processing time points"):
-        tpoint = np.zeros((nd2_file.sizes['y'], nd2_file.sizes['x'], 80, nd2_file.sizes['c']), dtype='uint16')
-        for j in range(80):
-            tpoint[:, :, j, 0] = nd2_file.get_frame_2D(t=i * 80 + j, c=0)
-            tpoint[:, :, j, 1] = nd2_file.get_frame_2D(t=i * 80 + j, c=1)
-
-        yield np.squeeze(np.transpose(tpoint, [1, 0, 2, 3]))
-
-    """
-    with h5py.File(filename, 'r') as h5_file:
+    with h5py.File(file_path, 'r') as h5_file:
         t, x, y, z, c = h5_file['dataset'].shape
 
         for i in tqdm(range(t), desc="Processing time points"):
             tpoint = np.zeros((x, y, z, c), dtype='uint16')
-            for j in range(numZ):
+            for j in range(z):
                 tpoint[:, :, j, :] = h5_file['dataset'][i, :, :, j, :]
 
             yield np.squeeze(tpoint)
-    """
 
 
-# Build bright field NIR
-def build_nir(nwbfile, video_path, behavior_timestamps):
-    with h5py.File(video_path, 'r') as hdf:
-        data = hdf['img_nir'][:]
-        timestamps = hdf['img_metadata']['img_timestamp'][:]
-
-    decimal_location = str(behavior_timestamps[0]).index('.')
-
-    timestamps = np.asarray(
-        [float(str(time)[0:decimal_location] + '.' + str(time)[decimal_location:]) for time in timestamps])
-
-    nir_data = np.array(data)
-    nir_data = np.transpose(data, axes=(0, 2, 1))  # Shape should be (T, X, Y)
-    nir_data = nir_data[:, :, :]
-    hefty_data = H5DataIO(data=nir_data, compression=True)
-
-    nir_vol_series = ImageSeries(
-        name='BrightFieldNIR',
-        description='The light path used to image behavior was in a reflected brightfield (NIR) configuration. Light '
-                    'supplied by an 850-nm LED (M850L3, Thorlabs) was collimated and passed through an 850/10 '
-                    'bandpass filter (FBH850-10, Thorlabs). Illumination light was reflected towards the sample by a '
-                    'half mirror and was focused on the sample through a 10x objective (CFI Plan Fluor 10x, '
-                    'Nikon). The image from the sample passed through the half mirror and was filtered by another '
-                    '850-nm bandpass filter of the same model. The image was captured by a CMOS camera ('
-                    'BFS-U3-28S5M-C, FLIR).',
-        data=hefty_data,
-        unit='',
-        timestamps=timestamps[::2],
-        # timestamps=list(range(hefty_data.shape[0])),
-    )
-
-    nir_module = nwbfile.create_processing_module(
-        name='BF_NIR',
-        description='The light path used to image behavior was in a reflected brightfield (NIR) configuration. Light '
-                    'supplied by an 850-nm LED (M850L3, Thorlabs) was collimated and passed through an 850/10 '
-                    'bandpass filter (FBH850-10, Thorlabs). Illumination light was reflected towards the sample by a '
-                    'half mirror and was focused on the sample through a 10x objective (CFI Plan Fluor 10x, '
-                    'Nikon). The image from the sample passed through the half mirror and was filtered by another '
-                    '850-nm bandpass filter of the same model. The image was captured by a CMOS camera ('
-                    'BFS-U3-28S5M-C, FLIR).'
-    )
-    nir_module.add(nir_vol_series)
-
-    return nir_vol_series
-
-
-def build_gcamp(nwbfile, package, OptChannels, OpticalChannelRefs, device):
-    nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{full_path}/{metadata['subject']}.nd2"))
-    # h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
-
+def build_gcamp(nwbfile, package, OptChannels, order_optical_channels, device):
     scan_rate = 2.66
     ai_sampling_rate = 0
 
-    numX = nd2_file.sizes['x']
-    numY = nd2_file.sizes['y']
+    with h5py.File(package['data']['video']['raw_path'], 'r') as h5_file:
+        t, numX, numY, z, c = h5_file['dataset'].shape
 
     # Create DataChunkIterator
     data = DataChunkIterator(
@@ -289,21 +228,21 @@ def build_gcamp(nwbfile, package, OptChannels, OpticalChannelRefs, device):
         name='CalciumImVol',
         description='Imaging volume used to acquire calcium imaging data',
         optical_channel_plus=OptChannels,
-        order_optical_channels=OpticalChannelRefs,
+        order_optical_channels=order_optical_channels,
         device=device,
-        location=metadata['location'],
-        grid_spacing=metadata['grid spacing'],
-        grid_spacing_unit=metadata['grid spacing unit'],
-        reference_frame=f"Worm {metadata['location']}"
+        location=package['metadata']['location'],
+        grid_spacing=package['metadata']['map']['grid_spacing'],
+        grid_spacing_unit='micrometer',
+        reference_frame=f"Worm {package['metadata']['location']}"
     )
 
     calcium_image_series = MultiChannelVolumeSeries(
         name="CalciumImageSeries",
-        description="GCaMP6s series images. Dimensions should be (t, x, y, z, C).",
+        description="GCaMP series images. Dimensions should be (t, x, y, z, C).",
         comments="",
         data=wrapped_data,
         device=device,
-        unit=metadata['grid spacing unit'],
+        unit='micrometer',
         scan_line_rate=scan_rate,
         dimension=[numX, numY],
         resolution=1.,
@@ -567,6 +506,9 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
 
 
 def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, timestamps):
+
+
+
     nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{data_path}/{metadata['subject']}.nd2"))
     # h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
 
@@ -672,7 +614,6 @@ def build_nwb(nwb_file, package, main_device):
 
     print("Processing neuron ROIs...")
 
-
     vs = PlaneSegmentation(
         name='NeuronSegmentationROIs',
         description='Segmentation of NeuroPAL volume. IDs found in NeuroPALNeurons.',
@@ -711,24 +652,86 @@ def build_nwb(nwb_file, package, main_device):
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
     calc_imaging_volume = build_gcamp(nwb_file, package, OpticalChannels, order_optical_channels, main_device)
 
+    #traces = pd.read_csv(Path(package['data']['map']['volume']).parent.parent.parent / 'raw.csv')
+    traces = pd.read_csv('C:\\Users\\sep27\\Documents\\0-Data\\raw.csv')
+    target_date = '20220327'
+    target_animal = '2'
+
+    traces['date'] = traces['date'].astype(str)
+    traces['animal'] = traces['animal'].astype(str)
+    target_frame = traces[traces['date'] == target_date]
+    target_frame = target_frame[target_frame['animal'] == target_animal]
+
+    activity = {}
+    for idx, row in target_frame.iterrows():
+        activity[row['neuron']] = row[9:].fillna(0)
+
+    annos = 'C:\\Users\\sep27\\Documents\\0-Data\\20220327\\2\\processed\\annotations-backup.h5'
+    worldlines = 'C:\\Users\\sep27\\Documents\\0-Data\\20220327\\2\\processed\\worldlines-backup.h5'
+
+    with h5py.File(annos, 'r') as h5_file:
+        t = h5_file['t_idx'][:]
+        wlid = h5_file['worldline_id'][:]
+        x = h5_file['x'][:]
+        y = h5_file['y'][:]
+        z = h5_file['z'][:]
+
+    with h5py.File(worldlines, 'r') as h5_file:
+        id = h5_file['id'][:]
+        name = h5_file['name'][:]
+
+    label = []
+    for eachNeuron in range(len(wlid)):
+        label.append(name[wlid[eachNeuron]])
+
+    trackIDs = PlaneSegmentation(
+        name='TrackedNeuronROIs',
+        description='Neuron centers as tracked throughout GCaMP video.',
+        imaging_plane=ImagingVol,
+    )
+
+    for eachNeuron in range(len(wlid)):
+        trackIDs.add_roi(voxel_mask=[[x[eachNeuron], y[eachNeuron], z[eachNeuron], 1]])
+
+    trackIDs.add_column(
+        name='TrackedNeuronIDs',
+        description='Neuron ID labels for tracked neuron rois.',
+        data=label,
+        index=False,
+    )
+
+    NeuroPALTracks = ImageSegmentation(
+        name='TrackedNeurons',
+    )
+
+    NeuroPALTracks.add_plane_segmentation(trackIDs)
+    #neuroPAL_module.add(NeuroPALTracks)
+
+    response_dict = {}
+
+    for eachNeuron in activity.keys():
+        response_dict[eachNeuron] = RoiResponseSeries(
+            name=f'{eachNeuron}ActivityTraces',
+            description=f'ROIResponseSeries describing {eachNeuron} activity over time as traced by ZephIR.',
+            rois=trackIDs,
+            data=activity[eachNeuron]
+        )
+
+    activityTraces = DfOverF(
+        name='ActivityDfOverF',
+        roi_response_series=response_dict
+    )
+
     # video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
     #    data_path, ImagingVol, calc_imaging_volume)
-    signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name,
-                                                                                    calc_imaging_volume, labels,
-                                                                                    metadata, timestamps)
+    #signal_roi, signal_fluor, calc_labels, calc_volseg, calc_imseg = build_activity(data_path, file_name,
+    #                                                                                calc_imaging_volume, labels,
+    #                                                                                metadata, timestamps)
 
-    ophys.add(calc_imseg)
-    ophys.add(signal_roi)
-    ophys.add(signal_fluor)
-    ophys.add(calc_labels)
+    ophys.add(activityTraces)
+    ophys.add(NeuroPALTracks)
 
-    for eachBehavior in behavior:
-        behavior_module.add(eachBehavior)
-
-    # specify the file path you want to save this NWB file to
     save_path = f"{data_path}/../../NWB_flavell_final_2024_03_19/{file_name}.nwb"
-    # save_path = f"{data_path}/../../NWB_NP_flavell/{file_name}.nwb"
-    # save_path = f"/Users/danielysprague/foco_lab/data/NWB_test/{file_name}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()
