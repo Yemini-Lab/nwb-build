@@ -198,22 +198,22 @@ def h5_memory_mapper(nd2_file, output_file):
 
 def iter_calc_h5(file_path):
     with h5py.File(file_path, 'r') as h5_file:
-        t, x, y, z, c = h5_file['dataset'].shape
+        t, x, y, z, c = h5_file['data'].shape
 
         for i in tqdm(range(t), desc="Processing time points"):
             tpoint = np.zeros((x, y, z, c), dtype='uint16')
             for j in range(z):
-                tpoint[:, :, j, :] = h5_file['dataset'][i, :, :, j, :]
+                tpoint[:, :, j, :] = h5_file['data'][i, :, :, j, :]
 
             yield np.squeeze(tpoint)
 
 
 def build_gcamp(nwbfile, package, OptChannels, order_optical_channels, device):
-    scan_rate = 2.66
-    ai_sampling_rate = 0
+    scan_rate = float(2.66)
+    ai_sampling_rate = float(0)
 
     with h5py.File(package['data']['video']['raw_path'], 'r') as h5_file:
-        t, numX, numY, z, c = h5_file['dataset'].shape
+        t, numX, numY, z, c = h5_file['data'].shape
 
     # Create DataChunkIterator
     data = DataChunkIterator(
@@ -313,8 +313,8 @@ def extract_pixel_sizes(input_str):
 
 def build_channels(package):
     print("-- Starting to build channels...")
-    OpticalChannels = []
-    OptChanRefData = []
+    optical_channels = []
+    order_optical_channels_refs = []
 
     fluo_dict = {
         'mNeptune': {
@@ -366,20 +366,20 @@ def build_channels(package):
             emission_range=fluo_dict[eachFluo]['em_range'],
             emission_lambda=float(fluo_dict[eachFluo]['em_lambda'])
         )
-        OpticalChannels.append(OptChan)
-        OptChanRefData.append(
-            f"{fluo_dict[eachFluo]['ex_lambda']}-{mean(fluo_dict[eachFluo]['em_range'])}-{fluo_dict[eachFluo]['em_range'][1] - fluo_dict[eachFluo]['em_range'][0]}nm")
+        optical_channels.append(OptChan)
+        order_optical_channels_refs.append(
+            f"{fluo_dict[eachFluo]['ex_lambda']}-{round(mean(fluo_dict[eachFluo]['em_range']))}-{fluo_dict[eachFluo]['em_range'][1] - fluo_dict[eachFluo]['em_range'][0]}nm")
 
     print("-- Channels built.")
 
     # Create OpticalChannelReferences object
-    OpticalChannelRefs = OpticalChannelReferences(
+    order_optical_channels = OpticalChannelReferences(
         name='order_optical_channels',
-        channels=OptChanRefData
+        channels=order_optical_channels_refs
     )
 
     print("-- OpticalChannelReferences created.")
-    return OpticalChannels, OpticalChannelRefs
+    return optical_channels, order_optical_channels
 
 
 # Convert each string into a tuple of integers, handling non-numeric characters
@@ -399,11 +399,12 @@ def build_colormap(package, ImagingVol, order_optical_channels):
     if dims[3] != min(dims):
         package['data']['map']['contents'] = np.transpose(package['data']['map']['contents'], (3, 2, 1, 0))
 
+    print(order_optical_channels)
+
     # Create MultiChannelVolume object
     Image = MultiChannelVolume(
         name='NeuroPALImageRaw',
-        order_optical_channels=order_optical_channels,
-        description=f"NeuroPAL volume of {package['metadata']['animal_id']}.",
+        description=f"NeuroPAL volume of {package['metadata']['identifier']}.",
         RGBW_channels=package['metadata']['map']['RGBW'],
         data=H5DataIO(data=package['data']['map']['contents'], compression=True),
         imaging_volume=ImagingVol
@@ -585,7 +586,7 @@ def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, 
 def build_nwb(nwb_file, package, main_device):
     print("Starting to build NWB for run...")
 
-    OpticalChannels, order_optical_channels = build_channels(package)
+    optical_channels, order_optical_channels = build_channels(package)
 
     neuroPAL_module = nwb_file.create_processing_module(
         name='NeuroPAL',
@@ -595,7 +596,7 @@ def build_nwb(nwb_file, package, main_device):
     print("- Creating ImagingVolume object for NeuroPAL...")  # Debug print
     ImagingVol = ImagingVolume(
         name='NeuroPALImVol',
-        optical_channel_plus=OpticalChannels,
+        optical_channel_plus=optical_channels,
         order_optical_channels=order_optical_channels,
         description='NeuroPAL image of C. Elegans',
         device=main_device,
@@ -607,9 +608,8 @@ def build_nwb(nwb_file, package, main_device):
         reference_frame=f"Worm {package['metadata']['location']}"
     )
 
-    Image = build_colormap(package, ImagingVol, order_optical_channels)
-
     nwb_file.add_imaging_plane(ImagingVol)
+    Image = build_colormap(package, ImagingVol, order_optical_channels)
     nwb_file.add_acquisition(Image)
 
     print("Processing neuron ROIs...")
@@ -650,12 +650,12 @@ def build_nwb(nwb_file, package, main_device):
     )
 
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
-    calc_imaging_volume = build_gcamp(nwb_file, package, OpticalChannels, order_optical_channels, main_device)
+    calc_imaging_volume = build_gcamp(nwb_file, package, optical_channels, order_optical_channels, main_device)
 
     #traces = pd.read_csv(Path(package['data']['map']['volume']).parent.parent.parent / 'raw.csv')
-    traces = pd.read_csv('C:\\Users\\sep27\\Documents\\0-Data\\raw.csv')
-    target_date = '20220327'
-    target_animal = '2'
+    traces = pd.read_csv(package['data']['video']['raw_path'].parent.parent.parent.parent / 'raw.csv')
+    target_date = package['metadata']['date']
+    target_animal = package['metadata']['animal_id']
 
     traces['date'] = traces['date'].astype(str)
     traces['animal'] = traces['animal'].astype(str)
@@ -666,8 +666,8 @@ def build_nwb(nwb_file, package, main_device):
     for idx, row in target_frame.iterrows():
         activity[row['neuron']] = row[9:].fillna(0)
 
-    annos = 'C:\\Users\\sep27\\Documents\\0-Data\\20220327\\2\\processed\\annotations-backup.h5'
-    worldlines = 'C:\\Users\\sep27\\Documents\\0-Data\\20220327\\2\\processed\\worldlines-backup.h5'
+    annos = package['data']['video']['raw_path'].parent / 'annotations.h5'
+    worldlines = package['data']['video']['raw_path'].parent / 'worldlines.h5'
 
     with h5py.File(annos, 'r') as h5_file:
         t = h5_file['t_idx'][:]
@@ -731,7 +731,7 @@ def build_nwb(nwb_file, package, main_device):
     ophys.add(activityTraces)
     ophys.add(NeuroPALTracks)
 
-    save_path = f"{data_path}/../../NWB_flavell_final_2024_03_19/{file_name}.nwb"
+    save_path = f"C:\\Users\\Kevin\\Documents\\maedeh\\saved\\{package['metadata']['identifier']}.nwb"
     io = NWBHDF5IO(save_path, mode='w')
     io.write(nwb_file)
     io.close()
