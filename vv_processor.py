@@ -12,9 +12,8 @@ from pathlib import Path
 import scipy.io as sio
 import numpy as np
 
-map_root = Path("C:\\Users\\Yemini Laboratory\\Dropbox\\Male-Herm-Paper")
-video_root = Path("C:\\Users\\Yemini Laboratory\\Northeastern University\\Seyedehmaedeh Seyedolmohadesin - "
-                  "sexual_dimorphism_data\\")
+map_root = Path("C:\\Users\\Kevin\\Documents\\maedeh\\Male-Herm-Paper")
+video_root = Path("C:\\Users\\Kevin\\Documents\\maedeh")
 
 f = open(f"{video_root}\\datasets.json")
 datasets = json.load(f)
@@ -91,14 +90,15 @@ for eachFile in tqdm(datasets.keys(), desc="Processing files..."):
     metadata['strain'] = data['map']['contents']['worm'][0][0][3]
     metadata['notes'] = data['map']['contents']['worm'][0][0][4]
     metadata['map']['grid_spacing'] = data['map']['contents']['info'][0][0][1][0]
-    metadata['map']['RGBW'] = data['map']['contents']['prefs'][0][0]
+    metadata['map']['RGBW'] = data['map']['contents']['prefs'][0][0][0][0]
     metadata['npal_version'] = data['map']['contents']['version'][0][0]
 
     data['map']['contents'] = data['map']['contents']['data']
+    metadata['date'] = datetime.strptime(metadata['date'], '%Y%m%d')
 
     package = {'metadata': metadata, 'data': data}
-    nwb_file, main_device, nir_device = simpleio.build_file(package)
-    simpleio.build_nwb(nwb_file, package, main_device, nir_device)
+    nwb_file, main_device = simpleio.build_file(package)
+    simpleio.build_nwb(nwb_file, package, main_device)
 
 
 
