@@ -653,7 +653,8 @@ def build_nwb(nwb_file, package, main_device):
 
     #traces = pd.read_csv(Path(package['data']['map']['volume']).parent.parent.parent / 'raw.csv')
     traces = pd.read_csv(package['data']['video']['raw_path'].parent.parent.parent.parent / 'raw.csv')
-    target_date = package['metadata']['date']
+    target_date = str(package['metadata']['date']).split(' ')
+    target_date = target_date[0].replace('-', '')
     target_animal = package['metadata']['animal_id']
 
     traces['date'] = traces['date'].astype(str)
@@ -730,7 +731,6 @@ def build_nwb(nwb_file, package, main_device):
     ophys.add(activityTraces)
     ophys.add(NeuroPALTracks)
 
-
     # Adding stimulus data
     timestamps = []
     stimuli = []
@@ -749,7 +749,6 @@ def build_nwb(nwb_file, package, main_device):
                     time=float(timestamp),
                     annotation=str(stimulus)
                 )
-
 
     ophys.add(stimData)
 
