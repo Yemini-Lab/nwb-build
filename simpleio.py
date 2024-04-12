@@ -651,7 +651,6 @@ def build_nwb(nwb_file, package, main_device):
     # Discover and sort tiff files, build single .h5 file for iterator compatibility.
     calc_imaging_volume = build_gcamp(nwb_file, package, optical_channels, order_optical_channels, main_device)
 
-    #traces = pd.read_csv(Path(package['data']['map']['volume']).parent.parent.parent / 'raw.csv')
     traces = pd.read_csv(package['data']['video']['raw_path'].parent.parent.parent.parent / 'raw.csv')
     target_date = str(package['metadata']['date']).split(' ')
     target_date = target_date[0].replace('-', '')
@@ -661,6 +660,10 @@ def build_nwb(nwb_file, package, main_device):
     traces['animal'] = traces['animal'].astype(str)
     target_frame = traces[traces['date'] == target_date]
     target_frame = target_frame[target_frame['animal'] == target_animal]
+
+    print(target_frame.shape, np.shape(target_frame.iloc[:, 9:].to_numpy()))
+
+    target_frame = target_frame.iloc[:, 9:].to_numpy()
 
     activity = {}
     for idx, row in target_frame.iterrows():
@@ -707,19 +710,21 @@ def build_nwb(nwb_file, package, main_device):
     NeuroPALTracks.add_plane_segmentation(trackIDs)
     neuroPAL_module.add(NeuroPALTracks)
 
-    response_dict = {}
+    rt_region = trackIDs.create_roi_table_region(
+        description='Segmented neurons associated with calcium image series',
+        region=list(np.arange(trackIDs.voxel_mask.shape[0]))
+    )
 
-    for eachNeuron in activity.keys():
-        response_dict[eachNeuron] = RoiResponseSeries(
-            name=f'{eachNeuron}ActivityTraces',
-            description=f'ROIResponseSeries describing {eachNeuron} activity over time as traced by ZephIR.',
-            rois=trackIDs,
-            data=activity[eachNeuron]
-        )
+    rrs = RoiResponseSeries(
+        name=f'{eachNeuron}ActivityTraces',
+        description=f'ROIResponseSeries describing {eachNeuron} activity over time as traced by ZephIR.',
+        rois=rt_region,
+        data=target_frame
+    )
 
     activityTraces = DfOverF(
         name='ActivityDfOverF',
-        roi_response_series=response_dict
+        roi_response_series=rrs
     )
 
     # video_center_plane, video_center_table, colormap_center_plane, colormap_center_table, NeuroPALImSeg = build_neuron_centers(
@@ -730,6 +735,54 @@ def build_nwb(nwb_file, package, main_device):
 
     ophys.add(activityTraces)
     ophys.add(NeuroPALTracks)
+
+    '''
+    # Extracting Activity Dataframe
+
+    traces = pd.read_csv(package['data']['video']['raw_path'].parent.parent.parent.parent / 'raw.csv')
+    target_date = str(package['metadata']['date']).split(' ')
+    target_date = target_date[0].replace('-', '')
+    target_animal = package['metadata']['animal_id']
+
+    traces['date'] = traces['date'].astype(str)
+    traces['animal'] = traces['animal'].astype(str)
+    target_frame = traces[traces['date'] == target_date]
+    target_frame = target_frame[target_frame['animal'] == target_animal]
+
+    print(target_frame.shape, np.shape(target_frame.iloc[:, 9:].to_numpy()))
+
+    target_frame = target_frame.iloc[:, 9:].to_numpy()
+
+    # Adding neuron tracks
+
+    annos = package['data']['video']['raw_path'].parent / 'annotations.h5'
+    worldlines = package['data']['video']['raw_path'].parent / 'worldlines.h5'
+
+    with h5py.File(annos, 'r') as h5_file:
+        t = h5_file['t_idx'][:]
+        wlid = h5_file['worldline_id'][:]
+        x = h5_file['x'][:]
+        y = h5_file['y'][:]
+        z = h5_file['z'][:]
+
+    with h5py.File(worldlines, 'r') as h5_file:
+        id = h5_file['id'][:]
+        name = h5_file['name'][:]
+
+    label = []
+    for eachNeuron in range(len(wlid)):
+        label.append(name[wlid[eachNeuron]])
+        
+    trackIDs = PlaneSegmentation(
+        name='TrackedNeuronROIs',
+        description='Neuron centers as tracked throughout GCaMP video.',
+        imaging_plane=calc_imaging_volume,
+    )
+
+    for eachNeuron in range(len(wlid)):
+        trackIDs.add_roi(voxel_mask=[[x[eachNeuron], y[eachNeuron], z[eachNeuron], 1]])
+    '''
+
 
     # Adding stimulus data
     timestamps = []
