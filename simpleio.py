@@ -735,21 +735,21 @@ def build_nwb(nwb_file, package, main_device):
     timestamps = []
     stimuli = []
 
+    stimData = AnnotationSeries(
+        name='StimulusInfo',
+        description='Denotes which stimulus was released on which frames.',
+    )
+
     with open(package['data']['video']['raw_path'].parent / 'flow_file.txt', 'r') as file:
         for line in file:
             parts = line.strip().split(',')
             if len(parts) == 2:
                 timestamp, stimulus = parts
-                timestamps.append(int(timestamp))
-                stimuli.append(stimulus)
+                stimData.add_annotation(
+                    time=float(timestamp),
+                    annotation=str(stimulus)
+                )
 
-    # Add flowfile
-    stimData = AnnotationSeries(
-        name='StimulusInfo',
-        description='Denotes which stimulus was released on which frames.',
-        data=stimuli,
-        timestamps=timestamps,
-    )
 
     ophys.add(stimData)
 
