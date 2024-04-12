@@ -198,19 +198,19 @@ def h5_memory_mapper(nd2_file, output_file):
 
 def iter_calc_h5(file_path):
     with h5py.File(file_path, 'r') as h5_file:
-        t, x, y, z, c = h5_file['data'].shape
+        t, c, z, y, x = h5_file['data'].shape
 
         for i in tqdm(range(t), desc="Processing time points"):
-            tpoint = np.zeros((x, y, z, c), dtype='uint16')
+            tpoint = np.zeros((c, z, y, x), dtype='uint16')
             for j in range(z):
-                tpoint[:, :, j, :] = h5_file['data'][i, :, :, j, :]
+                tpoint[:, j, :, :] = h5_file['data'][i, :, j, :, :]
 
-            yield np.squeeze(tpoint)
+            yield np.squeeze(tpoint.transpose([3, 2, 1, 0]))
 
 
 def build_gcamp(nwbfile, package, OptChannels, order_optical_channels, device):
     scan_rate = float(2.66)
-    ai_sampling_rate = float(0)
+    ai_sampling_rate = float(2.66)
 
     with h5py.File(package['data']['video']['raw_path'], 'r') as h5_file:
         t, numX, numY, z, c = h5_file['data'].shape
@@ -239,14 +239,13 @@ def build_gcamp(nwbfile, package, OptChannels, order_optical_channels, device):
     calcium_image_series = MultiChannelVolumeSeries(
         name="CalciumImageSeries",
         description="GCaMP series images. Dimensions should be (t, x, y, z, C).",
-        comments="",
         data=wrapped_data,
         device=device,
         unit='micrometer',
         scan_line_rate=scan_rate,
         dimension=[numX, numY],
         resolution=1.,
-        rate=ai_sampling_rate,  # sampling rate in hz
+        rate=ai_sampling_rate,
         imaging_volume=calc_imaging_volume,
     )
 
@@ -399,8 +398,6 @@ def build_colormap(package, ImagingVol, order_optical_channels):
     if dims[3] != min(dims):
         package['data']['map']['contents'] = np.transpose(package['data']['map']['contents'], (3, 2, 1, 0))
 
-    print(order_optical_channels)
-
     # Create MultiChannelVolume object
     Image = MultiChannelVolume(
         name='NeuroPALImageRaw',
@@ -508,8 +505,6 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
 
 def build_activity(data_path, file_name, calc_imaging_volume, labels, metadata, timestamps):
 
-
-
     nd2_file, frames, channels = discover_nd2_files(os.path.join(f"{data_path}/{metadata['subject']}.nd2"))
     # h5_memory_mapper(nd2_file, os.path.join(full_path, f'{metadata["subject"]}-array.h5'))
 
@@ -615,7 +610,7 @@ def build_nwb(nwb_file, package, main_device):
     print("Processing neuron ROIs...")
 
     vs = PlaneSegmentation(
-        name='NeuronSegmentationROIs',
+        name='NeuroPALNeurons',
         description='Segmentation of NeuroPAL volume. IDs found in NeuroPALNeurons.',
         imaging_plane=ImagingVol,
     )
@@ -626,10 +621,13 @@ def build_nwb(nwb_file, package, main_device):
 
     for idx, row in neurons.iterrows():
         vs.add_roi(voxel_mask=[[row['Real X (um)'], row['Real Y (um)'], row['Real Z (um)'], 1]])
-        roi_ids.append(row['User ID'])
+        if isinstance(row['User ID'], str):
+            roi_ids.append(row['User ID'])
+        else:
+            roi_ids.append('')
 
     vs.add_column(
-        name='Neuron_IDs',
+        name='ID_labels',
         description='Neuron ID labels from segmentation image mask.',
         data=roi_ids,
         index=False,
@@ -705,7 +703,7 @@ def build_nwb(nwb_file, package, main_device):
     )
 
     NeuroPALTracks.add_plane_segmentation(trackIDs)
-    #neuroPAL_module.add(NeuroPALTracks)
+    neuroPAL_module.add(NeuroPALTracks)
 
     response_dict = {}
 
@@ -731,8 +729,9 @@ def build_nwb(nwb_file, package, main_device):
     ophys.add(activityTraces)
     ophys.add(NeuroPALTracks)
 
-    save_path = f"C:\\Users\\Kevin\\Documents\\maedeh\\saved\\{package['metadata']['identifier']}.nwb"
-    io = NWBHDF5IO(save_path, mode='w')
+
+    save_path = f"D:\\maedeh-converted\\{package['metadata']['identifier']}.nwb"
+    io = NWBHDF5IO(str(save_path), mode='w')
     io.write(nwb_file)
     io.close()
     print("NWB file built and saved at:", save_path)  # Debug print

@@ -12,8 +12,8 @@ from pathlib import Path
 import scipy.io as sio
 import numpy as np
 
-map_root = Path("C:\\Users\\Kevin\\Documents\\maedeh\\Male-Herm-Paper")
-video_root = Path("C:\\Users\\Kevin\\Documents\\maedeh")
+map_root = Path("C:\\Users\\Yemini Laboratory\\Documents\\Male-Herm-Paper")
+video_root = Path("C:\\Users\\Yemini Laboratory\\Northeastern University\\Seyedehmaedeh Seyedolmohadesin - sexual_dimorphism_data")
 
 f = open(f"{video_root}\\datasets.json")
 datasets = json.load(f)
@@ -97,8 +97,13 @@ for eachFile in tqdm(datasets.keys(), desc="Processing files..."):
     metadata['date'] = datetime.strptime(metadata['date'], '%Y%m%d')
 
     package = {'metadata': metadata, 'data': data}
-    nwb_file, main_device = simpleio.build_file(package)
-    simpleio.build_nwb(nwb_file, package, main_device)
+
+    if os.path.exists(f"D:\\maedeh-converted\\{package['metadata']['identifier']}.nwb"):
+        print(f"Skipping {package['metadata']['identifier']} as it already exists.")
+        pass
+    else:
+        nwb_file, main_device = simpleio.build_file(package)
+        simpleio.build_nwb(nwb_file, package, main_device)
 
 
 
