@@ -25,6 +25,7 @@ from pynwb.behavior import SpatialSeries, Position, BehavioralTimeSeries, Behavi
 from pynwb.ophys import ImageSegmentation, PlaneSegmentation, \
     DfOverF, RoiResponseSeries, Fluorescence
 from pynwb.image import ImageSeries
+from pynwb.misc import AnnotationSeries
 from tifffile import TiffFile
 from tifffile import imread
 from tqdm import tqdm
@@ -729,6 +730,28 @@ def build_nwb(nwb_file, package, main_device):
     ophys.add(activityTraces)
     ophys.add(NeuroPALTracks)
 
+
+    # Adding stimulus data
+    timestamps = []
+    stimuli = []
+
+    with open(package['data']['video']['raw_path'].parent / 'flow_file.txt', 'r') as file:
+        for line in file:
+            parts = line.strip().split(',')
+            if len(parts) == 2:
+                timestamp, stimulus = parts
+                timestamps.append(int(timestamp))
+                stimuli.append(stimulus)
+
+    # Add flowfile
+    stimData = AnnotationSeries(
+        name='StimulusInfo',
+        description='Denotes which stimulus was released on which frames.',
+        data=stimuli,
+        timestamps=timestamps,
+    )
+
+    ophys.add(stimData)
 
     save_path = f"D:\\maedeh-converted\\{package['metadata']['identifier']}.nwb"
     io = NWBHDF5IO(str(save_path), mode='w')
