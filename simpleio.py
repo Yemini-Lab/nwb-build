@@ -621,7 +621,7 @@ def build_nwb(nwb_file, package, main_device):
     roi_ids = []
 
     for idx, row in neurons.iterrows():
-        vs.add_roi(voxel_mask=[[row['Real X (um)'], row['Real Y (um)'], row['Real Z (um)'], 1]])
+        vs.add_roi(voxel_mask=[[row['Internal X (px)'], row['Internal Y (px)'], row['Internal Z (slice)'], 1]])
         if isinstance(row['User ID'], str):
             roi_ids.append(row['User ID'])
         else:
