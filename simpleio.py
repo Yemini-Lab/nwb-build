@@ -321,36 +321,36 @@ def build_channels(package):
             'ex_lambda': 600,
             'ex_range': [451, 658],
             'em_lambda': 650,
-            'em_range': [542, 763],
-            'link': 'https://www.fpbase.org/protein/mneptune/'
+            'em_range': [625, 775],
+            'link': 'https://www.chroma.com/products/parts/et700-75m'
         },
         'BFP': {
             'ex_lambda': 381,
             'ex_range': [0, 0],
             'em_lambda': 445,
-            'em_range': [0, 0],
-            'link': 'https://www.fpbase.org/protein/bfp/'
+            'em_range': [400, 500],
+            'link': 'https://www.chroma.com/products/parts/et450-50m'
         },
         'CyOFP': {
             'ex_lambda': 497,
             'ex_range': [349, 591],
             'em_lambda': 589,
-            'em_range': [525, 715],
-            'link': 'https://www.fpbase.org/protein/cyofp1/'
+            'em_range': [550, 650],
+            'link': 'https://www.chroma.com/products/parts/et600-50m'
         },
         'RFP': {
             'ex_lambda': 558,
             'ex_range': [365, 581],
             'em_lambda': 583,
-            'em_range': [523, 750],
-            'link': 'https://www.fpbase.org/protein/dsred/'
+            'em_range': [550, 650],
+            'link': 'https://www.chroma.com/products/parts/et600-50m'
         },
         'GCaMP': {
             'ex_lambda': 487,
             'ex_range': [0, 0],
             'em_lambda': 508,
-            'em_range': [0, 0],
-            'link': 'https://www.fpbase.org/protein/gcamp2/'
+            'em_range': [475, 575],
+            'link': 'https://www.chroma.com/products/parts/et525-50m'
         },
     }
 
