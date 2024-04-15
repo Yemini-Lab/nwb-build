@@ -404,7 +404,7 @@ def build_colormap(package, ImagingVol, order_optical_channels):
         name='NeuroPALImageRaw',
         description=f"NeuroPAL volume of {package['metadata']['identifier']}.",
         RGBW_channels=package['metadata']['map']['RGBW'],
-        data=H5DataIO(data=package['data']['map']['contents'], compression=True),
+        data=H5DataIO(data=package['data']['map']['contents'].T, compression=True),
         imaging_volume=ImagingVol
     )
 
@@ -661,13 +661,7 @@ def build_nwb(nwb_file, package, main_device):
     target_frame = traces[traces['date'] == target_date]
     target_frame = target_frame[target_frame['animal'] == target_animal]
 
-    print(target_frame.shape, np.shape(target_frame.iloc[:, 9:].to_numpy()))
-
     target_frame = target_frame.iloc[:, 9:].to_numpy()
-
-    activity = {}
-    for idx, row in target_frame.iterrows():
-        activity[row['neuron']] = row[9:].fillna(0)
 
     annos = package['data']['video']['raw_path'].parent / 'annotations.h5'
     worldlines = package['data']['video']['raw_path'].parent / 'worldlines.h5'
@@ -690,7 +684,7 @@ def build_nwb(nwb_file, package, main_device):
     trackIDs = PlaneSegmentation(
         name='TrackedNeuronROIs',
         description='Neuron centers as tracked throughout GCaMP video.',
-        imaging_plane=ImagingVol,
+        imaging_plane=calc_imaging_volume,
     )
 
     for eachNeuron in range(len(wlid)):
@@ -719,7 +713,9 @@ def build_nwb(nwb_file, package, main_device):
         name=f'{eachNeuron}ActivityTraces',
         description=f'ROIResponseSeries describing {eachNeuron} activity over time as traced by ZephIR.',
         rois=rt_region,
-        data=target_frame
+        data=target_frame,
+        unit='',
+        rate=2.66
     )
 
     activityTraces = DfOverF(
@@ -788,20 +784,20 @@ def build_nwb(nwb_file, package, main_device):
     timestamps = []
     stimuli = []
 
-    stimData = AnnotationSeries(
-        name='StimulusInfo',
-        description='Denotes which stimulus was released on which frames.',
-    )
-
     with open(package['data']['video']['raw_path'].parent / 'flow_file.txt', 'r') as file:
         for line in file:
             parts = line.strip().split(',')
             if len(parts) == 2:
                 timestamp, stimulus = parts
-                stimData.add_annotation(
-                    time=float(timestamp),
-                    annotation=str(stimulus)
-                )
+                timestamps.append(float(timestamp))
+                stimuli.append(str(stimulus))
+
+    stimData = AnnotationSeries(
+        name='StimulusInfo',
+        description='Denotes which stimulus was released on which frames.',
+        timestamps=timestamps,
+        data=stimuli
+    )
 
     ophys.add(stimData)
 
