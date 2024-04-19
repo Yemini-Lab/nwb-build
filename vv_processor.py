@@ -89,8 +89,18 @@ for eachFile in tqdm(datasets.keys(), desc="Processing files..."):
     metadata['age'] = data['map']['contents']['worm'][0][0][1][0]
     metadata['strain'] = data['map']['contents']['worm'][0][0][3]
     metadata['notes'] = data['map']['contents']['worm'][0][0][4]
+
     metadata['map']['grid_spacing'] = data['map']['contents']['info'][0][0][1][0]
-    metadata['map']['RGBW'] = data['map']['contents']['prefs'][0][0][0][0]
+
+    RGBW_shape = np.shape(data['map']['contents']['prefs'][0][0][0][0])
+
+    if RGBW_shape[0] == 4:
+        metadata['map']['RGBW'] = data['map']['contents']['prefs'][0][0][0][0]
+    else:
+        metadata['map']['RGBW'] = data['map']['contents']['prefs'][0][0][0].T
+        if len(metadata['map']['RGBW']) == 1:
+            metadata['map']['RGBW'] = metadata['map']['RGBW'][0]
+
     metadata['npal_version'] = data['map']['contents']['version'][0][0]
 
     data['map']['contents'] = data['map']['contents']['data']

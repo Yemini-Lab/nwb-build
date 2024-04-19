@@ -658,6 +658,7 @@ def build_nwb(nwb_file, package, main_device):
 
     traces['date'] = traces['date'].astype(str)
     traces['animal'] = traces['animal'].astype(str)
+
     target_frame = traces[traces['date'] == target_date]
     target_frame = target_frame[target_frame['animal'] == target_animal]
 
@@ -801,7 +802,7 @@ def build_nwb(nwb_file, package, main_device):
 
     ophys.add(stimData)
 
-    save_path = f"D:\\maedeh-converted\\{package['metadata']['identifier']}.nwb"
+    save_path = f"D:\\maedeh-converted\\test-{package['metadata']['identifier']}.nwb"
     io = NWBHDF5IO(str(save_path), mode='w')
     io.write(nwb_file)
     io.close()
