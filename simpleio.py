@@ -684,12 +684,12 @@ def build_nwb(nwb_file, package, main_device):
 
     trackIDs = PlaneSegmentation(
         name='TrackedNeuronROIs',
-        description='Neuron centers as tracked throughout GCaMP video.',
+        description='Neuron centers as tracked throughout GCaMP video. Formatted as (x, y, z, t)',
         imaging_plane=calc_imaging_volume,
     )
 
     for eachNeuron in range(len(wlid)):
-        trackIDs.add_roi(voxel_mask=[[x[eachNeuron], y[eachNeuron], z[eachNeuron], 1]])
+        trackIDs.add_roi(voxel_mask=[[x[eachNeuron], y[eachNeuron], z[eachNeuron], t[eachNeuron]]])
 
     trackIDs.add_column(
         name='TrackedNeuronIDs',
@@ -716,7 +716,7 @@ def build_nwb(nwb_file, package, main_device):
         rois=rt_region,
         data=target_frame,
         unit='',
-        rate=2.66
+        timestamps=2.66
     )
 
     activityTraces = DfOverF(
