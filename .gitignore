@@ -6,3 +6,4 @@
 .idea/nwb-build.iml
 .idea/vcs.xml
 *.pyc
+.idea/.name

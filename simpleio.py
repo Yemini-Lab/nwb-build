@@ -716,7 +716,7 @@ def build_nwb(nwb_file, package, main_device):
         rois=rt_region,
         data=target_frame,
         unit='',
-        timestamps=2.66
+        rate=2.66
     )
 
     activityTraces = DfOverF(
