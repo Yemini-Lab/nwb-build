@@ -21,6 +21,7 @@ from hdmf.data_utils import DataChunkIterator
 from ndx_multichannel_volume import CElegansSubject, OpticalChannelReferences, OpticalChannelPlus, ImagingVolume, \
     MultiChannelVolume, MultiChannelVolumeSeries, SegmentationLabels
 from pynwb import NWBFile, NWBHDF5IO
+from pynwb.core import DynamicTable
 from pynwb.behavior import SpatialSeries, Position, BehavioralTimeSeries, BehavioralEvents
 from pynwb.ophys import ImageSegmentation, PlaneSegmentation, \
     DfOverF, RoiResponseSeries, Fluorescence
@@ -405,7 +406,7 @@ def build_colormap(package, ImagingVol, order_optical_channels):
         description=f"NeuroPAL volume of {package['metadata']['identifier']}.",
         RGBW_channels=package['metadata']['map']['RGBW'],
         data=H5DataIO(data=package['data']['map']['contents'].T, compression=True),
-        imaging_volume=ImagingVol
+        imaging_volume=ImagingVol,
     )
 
     print("-- Successfully built NeuroPAL volume.")
@@ -417,6 +418,8 @@ def build_neuron_centers(full_path, ImagingVol, calc_imaging_volume):
     all_signals_df = pd.read_csv(f"{full_path}/All_Signals.csv")
 
     # Check if Cell_ID.csv exists
+
+
     cell_id_file_path = f"{full_path}/Cell_ID.csv"
     cell_id_exists = os.path.exists(cell_id_file_path)
 
@@ -589,6 +592,14 @@ def build_nwb(nwb_file, package, main_device):
         description='NeuroPAL image metadata and segmentation'
     )
 
+    print("- Archiving NeuroPAL_ID settings...")
+    npal_settings = DynamicTable(name='NeuroPAL_ID', description='NeuroPAL_ID Settings')
+    npal_settings.add_column(name='gammas', description='channel gamma values')
+    gammas = list((package['metadata']['map']['gamma'].values()))
+    for eachGamma in gammas:
+        npal_settings.add_row({'gammas': eachGamma})
+    neuroPAL_module.add_container(npal_settings)
+
     print("- Creating ImagingVolume object for NeuroPAL...")  # Debug print
     ImagingVol = ImagingVolume(
         name='NeuroPALImVol',
@@ -641,7 +652,7 @@ def build_nwb(nwb_file, package, main_device):
     NeuroPALImSeg.add_plane_segmentation(vs)
     neuroPAL_module.add(NeuroPALImSeg)
 
-    print("Neuron ROIs processed and added to NWBFile.")
+    print("\nNeuron ROIs processed and added to NWBFile.")
 
     ophys = nwb_file.create_processing_module(
         name='CalciumActivity',
@@ -662,7 +673,15 @@ def build_nwb(nwb_file, package, main_device):
     target_frame = traces[traces['date'] == target_date]
     target_frame = target_frame[target_frame['animal'] == target_animal]
 
+    target_labels = target_frame[['neuron', 'neuron_group']]
     target_frame = target_frame.iloc[:, 9:].to_numpy()
+
+    activity_labels = DynamicTable(name='ActivityLabels', description='Neuron IDs associated with ActivityDfOverF')
+    activity_labels.add_column(name='neuron', description='neuron name')
+    activity_labels.add_column(name='neuron_group', description='neuron group')
+    for idx, row in target_labels.iterrows():
+        activity_labels.add_row({'neuron': row['neuron'], 'neuron_group': row['neuron_group']})
+    ophys.add_container(activity_labels)
 
     annos = package['data']['video']['raw_path'].parent / 'annotations.h5'
     worldlines = package['data']['video']['raw_path'].parent / 'worldlines.h5'
@@ -711,7 +730,7 @@ def build_nwb(nwb_file, package, main_device):
     )
 
     rrs = RoiResponseSeries(
-        name=f'{eachNeuron}ActivityTraces',
+        name=f'ActivityTraces',
         description=f'ROIResponseSeries describing {eachNeuron} activity over time as traced by ZephIR.',
         rois=rt_region,
         data=target_frame,
@@ -802,7 +821,7 @@ def build_nwb(nwb_file, package, main_device):
 
     ophys.add(stimData)
 
-    save_path = f"D:\\maedeh-converted\\test-{package['metadata']['identifier']}.nwb"
+    save_path = f"D:\\maedeh-converted\\{package['metadata']['identifier']}.nwb"
     io = NWBHDF5IO(str(save_path), mode='w')
     io.write(nwb_file)
     io.close()

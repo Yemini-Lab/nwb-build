@@ -101,6 +101,15 @@ for eachFile in tqdm(datasets.keys(), desc="Processing files..."):
         if len(metadata['map']['RGBW']) == 1:
             metadata['map']['RGBW'] = metadata['map']['RGBW'][0]
 
+    metadata['map']['gamma'] = {
+        'R': float(data['map']['contents']['prefs'][0][0][3][0]),
+        'G': float(data['map']['contents']['prefs'][0][0][3][1]),
+        'B': float(data['map']['contents']['prefs'][0][0][3][2]),
+        'W': float(data['map']['contents']['prefs'][0][0][3][3]),
+        'DIC': float(data['map']['contents']['prefs'][0][0][3][4]),
+        'GFP': float(data['map']['contents']['prefs'][0][0][3][5]),
+    }
+
     metadata['npal_version'] = data['map']['contents']['version'][0][0]
 
     data['map']['contents'] = data['map']['contents']['data']
